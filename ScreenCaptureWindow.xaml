@@ -1,0 +1,19 @@
+<Window x:Class="AIAssistant.ScreenCaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ScreenCaptureWindow" 
+        WindowStyle="None" 
+        AllowsTransparency="True" 
+        Background="Transparent"
+        Topmost="True" 
+        ShowInTaskbar="False" 
+        Cursor="Cross"
+        MouseDown="Window_MouseDown" 
+        MouseMove="Window_MouseMove" 
+        MouseUp="Window_MouseUp">
+    <Canvas x:Name="canvas">
+        <Image x:Name="screenImage" Stretch="None" />
+        <Rectangle x:Name="overlay" Fill="#80000000" />
+        <Rectangle x:Name="selectionRect" Stroke="Red" StrokeThickness="2" Fill="#40FF0000" Visibility="Collapsed" />
+    </Canvas>
+</Window>
