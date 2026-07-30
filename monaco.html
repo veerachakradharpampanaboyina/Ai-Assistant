@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>AI Code Editor</title>
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #1e1e1e; font-family: 'Segoe UI', sans-serif; }
+        .editor-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        #diff-actions { display: none; position: absolute; top: 10px; right: 20px; z-index: 1000; background: #252526; padding: 10px; border: 1px solid #007ACC; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        .diff-btn { border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; margin-left: 8px; }
+        #btn-accept { background: #238636; color: white; }
+        #btn-accept:hover { background: #2ea043; }
+        #btn-reject { background: #da3633; color: white; }
+        #btn-reject:hover { background: #f85149; }
+
+        /* Inline Edit Widget (Ctrl+K) */
+        #inline-edit-widget {
+            display: none;
+            position: absolute;
+            z-index: 2000;
+            background: #1e1e1e;
+            border: 1px solid #007ACC;
+            border-radius: 6px;
+            padding: 8px;
+            box-shadow: 0 4px 16px rgba(0,122,204,0.3);
+            width: 400px;
+        }
+        #inline-edit-input {
+            width: 100%;
+            background: #2d2d2d;
+            color: #e0e0e0;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 13px;
+            outline: none;
+            box-sizing: border-box;
+        }
+        #inline-edit-input:focus { border-color: #007ACC; }
+        #inline-edit-hint {
+            color: #6a6a6a;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        /* Command Palette */
+        #command-palette {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3000;
+            width: 500px;
+            background: #252526;
+            border: 1px solid #007ACC;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            max-height: 400px;
+            overflow: hidden;
+        }
+        #command-palette-input {
+            width: 100%;
+            background: #1e1e1e;
+            color: #e0e0e0;
+            border: none;
+            border-bottom: 1px solid #3e3e3e;
+            padding: 10px 14px;
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+        }
+        #command-palette-list {
+            max-height: 340px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #command-palette-list li {
+            padding: 8px 14px;
+            color: #ccc;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+        }
+        #command-palette-list li:hover, #command-palette-list li.selected {
+            background: #094771;
+            color: white;
+        }
+        .cmd-icon { font-size: 16px; flex-shrink: 0; }
+        .cmd-label { flex: 1; }
+        .cmd-shortcut { font-size: 11px; color: #888; }
+
+        /* Search Panel */
+        #search-panel {
+            display: none;
+            position: absolute;
+            top: 0;
+            right: 0;
+            z-index: 2500;
+            width: 320px;
+            height: 100%;
+            background: #252526;
+            border-left: 1px solid #3e3e3e;
+            overflow-y: auto;
+        }
+        #search-input {
+            width: calc(100% - 20px);
+            margin: 10px;
+            background: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 13px;
+            outline: none;
+            box-sizing: border-box;
+        }
+        #search-input:focus { border-color: #007ACC; }
+        .search-result {
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #ccc;
+            border-bottom: 1px solid #1e1e1e;
+        }
+        .search-result:hover { background: #094771; }
+        .search-file { color: #4fc3f7; font-weight: bold; padding: 6px 10px; font-size: 12px; margin-top: 4px; }
+        .search-line { color: #888; margin-right: 6px; }
+        .search-match { color: #ffcc00; font-weight: bold; }
+        #search-stats { color: #888; font-size: 11px; padding: 4px 10px; }
+
+        /* Ghost text (AI autocomplete) */
+        .ghost-text {
+            color: rgba(128, 128, 128, 0.5);
+            font-style: italic;
+        }
+
+        /* Split indicator */
+        #split-bar {
+            display: none;
+            position: absolute;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: #007ACC;
+            cursor: col-resize;
+            z-index: 500;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs/loader.min.js"></script>
+</head>
+<body>
+    <div id="editor-container" class="editor-container"></div>
+    <div id="diff-container" class="editor-container" style="visibility: hidden; z-index: -1;"></div>
+    <div id="split-editor-container" class="editor-container" style="display: none; left: 50%; width: 50%;"></div>
+    <div id="split-bar"></div>
+    
+    <div id="diff-actions">
+        <span style="color: #E5E5E5; font-size: 13px; font-weight: 500;">AI Proposed Changes</span>
+        <button id="btn-accept" class="diff-btn">✅ Accept</button>
+        <button id="btn-reject" class="diff-btn">❌ Reject</button>
+    </div>
+
+    <!-- Inline Edit Widget (Ctrl+K) -->
+    <div id="inline-edit-widget">
+        <input id="inline-edit-input" type="text" placeholder="Describe what to change..." autocomplete="off" />
+        <div id="inline-edit-hint">Enter to submit • Escape to cancel</div>
+    </div>
+
+    <!-- Command Palette -->
+    <div id="command-palette">
+        <input id="command-palette-input" type="text" placeholder="Type a command..." autocomplete="off" />
+        <ul id="command-palette-list"></ul>
+    </div>
+
+    <!-- Search Panel -->
+    <div id="search-panel">
+        <div style="padding: 10px; color: #ccc; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
+            <span>🔍 Search Files</span>
+            <span id="search-close" style="cursor: pointer; padding: 2px 6px;">&times;</span>
+        </div>
+        <input id="search-input" type="text" placeholder="Search across project..." />
+        <div style="padding: 4px 10px;">
+            <label style="color: #888; font-size: 11px;"><input type="checkbox" id="search-regex" /> Regex</label>
+            <label style="color: #888; font-size: 11px; margin-left: 10px;"><input type="checkbox" id="search-case" /> Case sensitive</label>
+        </div>
+        <div id="search-stats"></div>
+        <div id="search-results"></div>
+    </div>
+
+    <script>
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            
+            let originalModel = null;
+            let modifiedModel = null;
+            let currentLanguage = 'python';
+            let ghostDecorations = [];
+            let currentGhostText = '';
+            let autocompleteTimeout = null;
+            let splitEditor = null;
+            let isSplitMode = false;
+
+            // --- Main Editor ---
+            window.editor = monaco.editor.create(document.getElementById('editor-container'), {
+                value: '// Welcome to the AI Workspace Editor!\n// Full IDE features enabled.\n// Ctrl+K: AI Edit • Ctrl+Shift+P: Commands • Ctrl+Shift+F: Search\n',
+                language: currentLanguage,
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: true },
+                fontSize: 14,
+                fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+                fontLigatures: true,
+                renderWhitespace: 'selection',
+                bracketPairColorization: { enabled: true },
+                cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on',
+                smoothScrolling: true,
+                tabSize: 4,
+                formatOnPaste: true,
+                suggestOnTriggerCharacters: true,
+                quickSuggestions: true,
+                wordWrap: 'off',
+                lineNumbers: 'on',
+                glyphMargin: true,
+                folding: true,
+                links: true,
+                colorDecorators: true,
+                accessibilitySupport: 'off',
+                scrollbar: {
+                    verticalScrollbarSize: 10,
+                    horizontalScrollbarSize: 10
+                },
+                padding: { top: 10 }
+            });
+
+            // --- Diff Editor ---
+            window.diffEditor = monaco.editor.createDiffEditor(document.getElementById('diff-container'), {
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                enableSplitViewResizing: true
+            });
+
+            // --- Save File (Ctrl+S) ---
+            window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
+                window.chrome.webview.postMessage(JSON.stringify({
+                    action: 'save_file',
+                    code: window.editor.getValue(),
+                    filePath: window.currentFilePath
+                }));
+            });
+
+            // ================================================
+            // TAB AUTOCOMPLETE (AI Ghost Text)
+            // ================================================
+            let ghostWidget = null;
+
+            window.editor.onDidChangeModelContent(() => {
+                clearGhostText();
+                if (autocompleteTimeout) clearTimeout(autocompleteTimeout);
+                autocompleteTimeout = setTimeout(() => {
+                    requestAICompletion();
+                }, 500);
+            });
+
+            function requestAICompletion() {
+                const position = window.editor.getPosition();
+                if (!position) return;
+                
+                const model = window.editor.getModel();
+                if (!model) return;
+                
+                const lineContent = model.getLineContent(position.lineNumber);
+                if (lineContent.trim().length < 3) return; // Don't autocomplete very short lines
+
+                // Get context: 10 lines before + current line
+                const startLine = Math.max(1, position.lineNumber - 10);
+                const context = model.getValueInRange({
+                    startLineNumber: startLine,
+                    startColumn: 1,
+                    endLineNumber: position.lineNumber,
+                    endColumn: position.column
+                });
+
+                window.chrome.webview.postMessage(JSON.stringify({
+                    action: 'request_autocomplete',
+                    context: context,
+                    line: position.lineNumber,
+                    column: position.column,
+                    language: currentLanguage,
+                    filePath: window.currentFilePath
+                }));
+            }
+
+            function showGhostText(text, line, column) {
+                clearGhostText();
+                if (!text || text.trim().length === 0) return;
+                
+                currentGhostText = text;
+                const position = window.editor.getPosition();
+                if (!position || position.lineNumber !== line) return;
+
+                ghostDecorations = window.editor.deltaDecorations([], [{
+                    range: new monaco.Range(line, column, line, column),
+                    options: {
+                        after: {
+                            content: text,
+                            inlineClassName: 'ghost-text'
+                        }
+                    }
+                }]);
+            }
+
+            function clearGhostText() {
+                if (ghostDecorations.length > 0) {
+                    ghostDecorations = window.editor.deltaDecorations(ghostDecorations, []);
+                }
+                currentGhostText = '';
+            }
+
+            // Tab to accept ghost text
+            window.editor.addCommand(monaco.KeyCode.Tab, function() {
+                if (currentGhostText) {
+                    const position = window.editor.getPosition();
+                    window.editor.executeEdits('ghost-accept', [{
+                        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+                        text: currentGhostText
+                    }]);
+                    clearGhostText();
+                } else {
+                    // Default tab behavior
+                    window.editor.trigger('keyboard', 'tab', {});
+                }
+            }, '!suggestWidgetVisible && !inSnippetMode');
+
+            // ================================================
+            // INLINE AI EDIT (Ctrl+K)
+            // ================================================
+            const inlineWidget = document.getElementById('inline-edit-widget');
+            const inlineInput = document.getElementById('inline-edit-input');
+
+            window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, function() {
+                const position = window.editor.getPosition();
+                if (!position) return;
+
+                const coords = window.editor.getScrolledVisiblePosition(position);
+                if (!coords) return;
+
+                const editorDom = document.getElementById('editor-container');
+                const rect = editorDom.getBoundingClientRect();
+
+                inlineWidget.style.left = (rect.left + coords.left + 50) + 'px';
+                inlineWidget.style.top = (rect.top + coords.top - 40) + 'px';
+                inlineWidget.style.display = 'block';
+                inlineInput.value = '';
+                inlineInput.focus();
+            });
+
+            inlineInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    inlineWidget.style.display = 'none';
+                    window.editor.focus();
+                } else if (e.key === 'Enter') {
+                    const instruction = inlineInput.value.trim();
+                    if (!instruction) return;
+
+                    const selection = window.editor.getSelection();
+                    let selectedCode = '';
+                    if (selection && !selection.isEmpty()) {
+                        selectedCode = window.editor.getModel().getValueInRange(selection);
+                    } else {
+                        const pos = window.editor.getPosition();
+                        selectedCode = window.editor.getModel().getLineContent(pos.lineNumber);
+                    }
+
+                    window.chrome.webview.postMessage(JSON.stringify({
+                        action: 'inline_edit',
+                        instruction: instruction,
+                        selectedCode: selectedCode,
+                        fullCode: window.editor.getValue(),
+                        filePath: window.currentFilePath,
+                        language: currentLanguage,
+                        line: window.editor.getPosition().lineNumber
+                    }));
+
+                    inlineWidget.style.display = 'none';
+                    window.editor.focus();
+                }
+            });
+
+            // ================================================
+            // COMMAND PALETTE (Ctrl+Shift+P)
+            // ================================================
+            const palette = document.getElementById('command-palette');
+            const paletteInput = document.getElementById('command-palette-input');
+            const paletteList = document.getElementById('command-palette-list');
+            let paletteSelectedIndex = 0;
+
+            const commands = [
+                { icon: '📄', label: 'New File', shortcut: '', action: 'new_file' },
+                { icon: '💾', label: 'Save File', shortcut: 'Ctrl+S', action: 'save_file' },
+                { icon: '🔍', label: 'Search in Files', shortcut: 'Ctrl+Shift+F', action: 'search_files' },
+                { icon: '🤖', label: 'AI: Explain This Code', shortcut: '', action: 'explain_code' },
+                { icon: '🔧', label: 'AI: Refactor Code', shortcut: '', action: 'refactor_code' },
+                { icon: '🐛', label: 'AI: Debug This', shortcut: '', action: 'debug_code' },
+                { icon: '🧪', label: 'AI: Generate Tests', shortcut: '', action: 'generate_tests' },
+                { icon: '📝', label: 'AI: Generate Documentation', shortcut: '', action: 'generate_docs' },
+                { icon: '✏️', label: 'AI: Inline Edit (Ctrl+K)', shortcut: 'Ctrl+K', action: 'inline_edit_trigger' },
+                { icon: '📋', label: 'Format Document', shortcut: 'Shift+Alt+F', action: 'format_document' },
+                { icon: '↩️', label: 'Undo', shortcut: 'Ctrl+Z', action: 'undo' },
+                { icon: '↪️', label: 'Redo', shortcut: 'Ctrl+Y', action: 'redo' },
+                { icon: '📑', label: 'Split Editor Right', shortcut: '', action: 'split_editor' },
+                { icon: '🔄', label: 'Toggle Word Wrap', shortcut: 'Alt+Z', action: 'toggle_wrap' },
+                { icon: '🔢', label: 'Toggle Line Numbers', shortcut: '', action: 'toggle_line_numbers' },
+                { icon: '🗺️', label: 'Toggle Minimap', shortcut: '', action: 'toggle_minimap' },
+                { icon: '🖥️', label: 'Run in Terminal', shortcut: '', action: 'run_terminal' },
+                { icon: '🔀', label: 'Git: Stage File', shortcut: '', action: 'git_stage' },
+                { icon: '📤', label: 'Git: Commit', shortcut: '', action: 'git_commit' },
+                { icon: '📡', label: 'Git: Push', shortcut: '', action: 'git_push' },
+                { icon: '📥', label: 'Git: Pull', shortcut: '', action: 'git_pull' },
+                { icon: '🎯', label: 'Go to Line', shortcut: 'Ctrl+G', action: 'go_to_line' },
+                { icon: '🔎', label: 'Find and Replace', shortcut: 'Ctrl+H', action: 'find_replace' },
+                { icon: '📌', label: 'Toggle Fold All', shortcut: '', action: 'fold_all' },
+                { icon: '📖', label: 'Unfold All', shortcut: '', action: 'unfold_all' }
+            ];
+
+            window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP, function() {
+                togglePalette();
+            });
+
+            function togglePalette() {
+                if (palette.style.display === 'block') {
+                    palette.style.display = 'none';
+                    window.editor.focus();
+                } else {
+                    palette.style.display = 'block';
+                    paletteInput.value = '';
+                    paletteSelectedIndex = 0;
+                    renderPaletteItems(commands);
+                    paletteInput.focus();
+                }
+            }
+
+            function renderPaletteItems(items) {
+                paletteList.innerHTML = '';
+                items.forEach((cmd, i) => {
+                    const li = document.createElement('li');
+                    li.className = i === paletteSelectedIndex ? 'selected' : '';
+                    li.innerHTML = `<span class="cmd-icon">${cmd.icon}</span><span class="cmd-label">${cmd.label}</span><span class="cmd-shortcut">${cmd.shortcut}</span>`;
+                    li.onclick = () => executePaletteCommand(cmd);
+                    paletteList.appendChild(li);
+                });
+            }
+
+            paletteInput.addEventListener('input', () => {
+                const query = paletteInput.value.toLowerCase();
+                const filtered = commands.filter(c => c.label.toLowerCase().includes(query));
+                paletteSelectedIndex = 0;
+                renderPaletteItems(filtered);
+            });
+
+            paletteInput.addEventListener('keydown', (e) => {
+                const items = paletteList.querySelectorAll('li');
+                if (e.key === 'Escape') {
+                    palette.style.display = 'none';
+                    window.editor.focus();
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    paletteSelectedIndex = Math.min(paletteSelectedIndex + 1, items.length - 1);
+                    items.forEach((li, i) => li.className = i === paletteSelectedIndex ? 'selected' : '');
+                    items[paletteSelectedIndex]?.scrollIntoView({ block: 'nearest' });
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    paletteSelectedIndex = Math.max(paletteSelectedIndex - 1, 0);
+                    items.forEach((li, i) => li.className = i === paletteSelectedIndex ? 'selected' : '');
+                    items[paletteSelectedIndex]?.scrollIntoView({ block: 'nearest' });
+                } else if (e.key === 'Enter') {
+                    const query = paletteInput.value.toLowerCase();
+                    const filtered = commands.filter(c => c.label.toLowerCase().includes(query));
+                    if (filtered[paletteSelectedIndex]) {
+                        executePaletteCommand(filtered[paletteSelectedIndex]);
+                    }
+                }
+            });
+
+            function executePaletteCommand(cmd) {
+                palette.style.display = 'none';
+                window.editor.focus();
+
+                switch (cmd.action) {
+                    case 'save_file':
+                        window.chrome.webview.postMessage(JSON.stringify({ action: 'save_file', code: window.editor.getValue(), filePath: window.currentFilePath }));
+                        break;
+                    case 'search_files':
+                        toggleSearchPanel();
+                        break;
+                    case 'explain_code':
+                    case 'refactor_code':
+                    case 'debug_code':
+                    case 'generate_tests':
+                    case 'generate_docs':
+                        const sel = window.editor.getSelection();
+                        let code = '';
+                        if (sel && !sel.isEmpty()) code = window.editor.getModel().getValueInRange(sel);
+                        else code = window.editor.getValue();
+                        window.chrome.webview.postMessage(JSON.stringify({ action: cmd.action, code: code, filePath: window.currentFilePath, language: currentLanguage }));
+                        break;
+                    case 'inline_edit_trigger':
+                        window.editor.trigger('keyboard', 'editor.action.quickCommand', {});
+                        break;
+                    case 'format_document':
+                        window.editor.trigger('keyboard', 'editor.action.formatDocument', {});
+                        break;
+                    case 'undo':
+                        window.editor.trigger('keyboard', 'undo', {});
+                        break;
+                    case 'redo':
+                        window.editor.trigger('keyboard', 'redo', {});
+                        break;
+                    case 'split_editor':
+                        toggleSplitEditor();
+                        break;
+                    case 'toggle_wrap':
+                        const current = window.editor.getOption(monaco.editor.EditorOption.wordWrap);
+                        window.editor.updateOptions({ wordWrap: current === 'off' ? 'on' : 'off' });
+                        break;
+                    case 'toggle_line_numbers':
+                        const ln = window.editor.getOption(monaco.editor.EditorOption.lineNumbers);
+                        window.editor.updateOptions({ lineNumbers: ln === 'on' ? 'off' : 'on' });
+                        break;
+                    case 'toggle_minimap':
+                        const mm = window.editor.getOption(monaco.editor.EditorOption.minimap);
+                        window.editor.updateOptions({ minimap: { enabled: !mm.enabled } });
+                        break;
+                    case 'go_to_line':
+                        window.editor.trigger('keyboard', 'editor.action.gotoLine', {});
+                        break;
+                    case 'find_replace':
+                        window.editor.trigger('keyboard', 'editor.action.startFindReplaceAction', {});
+                        break;
+                    case 'fold_all':
+                        window.editor.trigger('keyboard', 'editor.foldAll', {});
+                        break;
+                    case 'unfold_all':
+                        window.editor.trigger('keyboard', 'editor.unfoldAll', {});
+                        break;
+                    case 'run_terminal':
+                    case 'git_stage':
+                    case 'git_commit':
+                    case 'git_push':
+                    case 'git_pull':
+                    case 'new_file':
+                        window.chrome.webview.postMessage(JSON.stringify({ action: cmd.action, filePath: window.currentFilePath }));
+                        break;
+                }
+            }
+
+            // ================================================
+            // SPLIT EDITOR
+            // ================================================
+            function toggleSplitEditor() {
+                const splitContainer = document.getElementById('split-editor-container');
+                const mainContainer = document.getElementById('editor-container');
+                const splitBar = document.getElementById('split-bar');
+
+                if (isSplitMode) {
+                    splitContainer.style.display = 'none';
+                    splitBar.style.display = 'none';
+                    mainContainer.style.width = '100%';
+                    if (splitEditor) { splitEditor.dispose(); splitEditor = null; }
+                    isSplitMode = false;
+                } else {
+                    mainContainer.style.width = '50%';
+                    splitContainer.style.display = 'block';
+                    splitContainer.style.left = '50%';
+                    splitContainer.style.width = '50%';
+                    splitBar.style.display = 'block';
+                    splitBar.style.left = 'calc(50% - 2px)';
+
+                    splitEditor = monaco.editor.create(splitContainer, {
+                        value: window.editor.getValue(),
+                        language: currentLanguage,
+                        theme: 'vs-dark',
+                        automaticLayout: true,
+                        minimap: { enabled: false },
+                        fontSize: 14,
+                        fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace"
+                    });
+                    isSplitMode = true;
+                }
+                window.editor.layout();
+            }
+
+            // ================================================
+            // SEARCH ACROSS PROJECT (Ctrl+Shift+F)
+            // ================================================
+            const searchPanel = document.getElementById('search-panel');
+            const searchInput = document.getElementById('search-input');
+            const searchResults = document.getElementById('search-results');
+            const searchStats = document.getElementById('search-stats');
+
+            window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, function() {
+                toggleSearchPanel();
+            });
+
+            function toggleSearchPanel() {
+                if (searchPanel.style.display === 'block') {
+                    searchPanel.style.display = 'none';
+                    const mainContainer = document.getElementById('editor-container');
+                    mainContainer.style.width = isSplitMode ? '50%' : '100%';
+                } else {
+                    searchPanel.style.display = 'block';
+                    const mainContainer = document.getElementById('editor-container');
+                    mainContainer.style.width = isSplitMode ? 'calc(50% - 320px)' : 'calc(100% - 320px)';
+                    searchInput.focus();
+                }
+                window.editor.layout();
+            }
+
+            document.getElementById('search-close').addEventListener('click', toggleSearchPanel);
+
+            let searchTimeout = null;
+            searchInput.addEventListener('input', () => {
+                if (searchTimeout) clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    const query = searchInput.value.trim();
+                    if (query.length < 2) { searchResults.innerHTML = ''; searchStats.textContent = ''; return; }
+                    
+                    window.chrome.webview.postMessage(JSON.stringify({
+                        action: 'search_project',
+                        query: query,
+                        regex: document.getElementById('search-regex').checked,
+                        caseSensitive: document.getElementById('search-case').checked
+                    }));
+                }, 300);
+            });
+
+            // ================================================
+            // DIFF VIEW
+            // ================================================
+            document.getElementById('btn-accept').addEventListener('click', () => {
+                const newCode = modifiedModel.getValue();
+                window.editor.setValue(newCode);
+                hideDiff();
+                window.chrome.webview.postMessage(JSON.stringify({
+                    action: 'accept_changes',
+                    code: newCode,
+                    filePath: window.currentFilePath
+                }));
+            });
+
+            document.getElementById('btn-reject').addEventListener('click', () => {
+                hideDiff();
+            });
+
+            function showDiff(originalCode, newCode) {
+                originalModel = monaco.editor.createModel(originalCode, currentLanguage);
+                modifiedModel = monaco.editor.createModel(newCode, currentLanguage);
+                window.diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+
+                document.getElementById('editor-container').style.visibility = 'hidden';
+                document.getElementById('editor-container').style.zIndex = '-1';
+                document.getElementById('diff-container').style.visibility = 'visible';
+                document.getElementById('diff-container').style.zIndex = '1';
+                document.getElementById('diff-actions').style.display = 'block';
+            }
+
+            function hideDiff() {
+                document.getElementById('editor-container').style.visibility = 'visible';
+                document.getElementById('editor-container').style.zIndex = '1';
+                document.getElementById('diff-container').style.visibility = 'hidden';
+                document.getElementById('diff-container').style.zIndex = '-1';
+                document.getElementById('diff-actions').style.display = 'none';
+            }
+
+            // ================================================
+            // MESSAGE HANDLER
+            // ================================================
+            window.chrome.webview.addEventListener('message', event => {
+                try {
+                    const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                    
+                    if (msg.action === 'set_code') {
+                        window.currentFilePath = msg.filePath;
+                        window.editor.setValue(msg.code);
+                        if (msg.language) {
+                            currentLanguage = msg.language;
+                            monaco.editor.setModelLanguage(window.editor.getModel(), msg.language);
+                        }
+                        hideDiff();
+                    } else if (msg.action === 'propose_changes') {
+                        showDiff(msg.originalCode, msg.newCode);
+                    } else if (msg.action === 'get_code') {
+                        window.chrome.webview.postMessage(JSON.stringify({
+                            action: 'code_response',
+                            code: window.editor.getValue()
+                        }));
+                    } else if (msg.action === 'set_error_markers') {
+                        monaco.editor.setModelMarkers(window.editor.getModel(), 'terminal-parser', msg.markers || []);
+                    } else if (msg.action === 'show_ghost_text') {
+                        showGhostText(msg.text, msg.line, msg.column);
+                    } else if (msg.action === 'search_results') {
+                        renderSearchResults(msg.results, msg.query);
+                    } else if (msg.action === 'apply_inline_edit') {
+                        // Apply the AI's inline edit result
+                        if (msg.newCode) {
+                            showDiff(window.editor.getValue(), msg.newCode);
+                        }
+                    }
+                } catch(e) { console.error('Message handler error:', e); }
+            });
+
+            function renderSearchResults(results, query) {
+                searchResults.innerHTML = '';
+                let totalMatches = 0;
+                let totalFiles = 0;
+
+                if (!results || results.length === 0) {
+                    searchStats.textContent = 'No results found';
+                    return;
+                }
+
+                results.forEach(fileResult => {
+                    totalFiles++;
+                    const fileDiv = document.createElement('div');
+                    fileDiv.className = 'search-file';
+                    fileDiv.textContent = `📄 ${fileResult.file} (${fileResult.matches.length})`;
+                    searchResults.appendChild(fileDiv);
+
+                    fileResult.matches.forEach(match => {
+                        totalMatches++;
+                        const matchDiv = document.createElement('div');
+                        matchDiv.className = 'search-result';
+                        matchDiv.innerHTML = `<span class="search-line">L${match.line}:</span> ${highlightMatch(match.text, query)}`;
+                        matchDiv.onclick = () => {
+                            window.chrome.webview.postMessage(JSON.stringify({
+                                action: 'open_search_result',
+                                filePath: fileResult.file,
+                                line: match.line
+                            }));
+                        };
+                        searchResults.appendChild(matchDiv);
+                    });
+                });
+
+                searchStats.textContent = `${totalMatches} results in ${totalFiles} files`;
+            }
+
+            function highlightMatch(text, query) {
+                if (!query) return escapeHtml(text);
+                const escaped = escapeHtml(text);
+                const escapedQuery = escapeHtml(query);
+                return escaped.replace(new RegExp(escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '<span class="search-match">$&</span>');
+            }
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            // Context menu additions
+            window.editor.addAction({
+                id: 'ai-explain',
+                label: '🤖 AI: Explain This Code',
+                contextMenuGroupId: '1_ai',
+                contextMenuOrder: 1,
+                run: function(ed) {
+                    const sel = ed.getSelection();
+                    const code = sel && !sel.isEmpty() ? ed.getModel().getValueInRange(sel) : ed.getModel().getLineContent(ed.getPosition().lineNumber);
+                    window.chrome.webview.postMessage(JSON.stringify({ action: 'explain_code', code: code, filePath: window.currentFilePath, language: currentLanguage }));
+                }
+            });
+
+            window.editor.addAction({
+                id: 'ai-refactor',
+                label: '🔧 AI: Refactor',
+                contextMenuGroupId: '1_ai',
+                contextMenuOrder: 2,
+                run: function(ed) {
+                    const sel = ed.getSelection();
+                    const code = sel && !sel.isEmpty() ? ed.getModel().getValueInRange(sel) : ed.getValue();
+                    window.chrome.webview.postMessage(JSON.stringify({ action: 'refactor_code', code: code, filePath: window.currentFilePath, language: currentLanguage }));
+                }
+            });
+
+            window.editor.addAction({
+                id: 'ai-debug',
+                label: '🐛 AI: Debug',
+                contextMenuGroupId: '1_ai',
+                contextMenuOrder: 3,
+                run: function(ed) {
+                    const code = ed.getValue();
+                    window.chrome.webview.postMessage(JSON.stringify({ action: 'debug_code', code: code, filePath: window.currentFilePath, language: currentLanguage }));
+                }
+            });
+
+            window.editor.addAction({
+                id: 'ai-tests',
+                label: '🧪 AI: Generate Tests',
+                contextMenuGroupId: '1_ai',
+                contextMenuOrder: 4,
+                run: function(ed) {
+                    const code = ed.getValue();
+                    window.chrome.webview.postMessage(JSON.stringify({ action: 'generate_tests', code: code, filePath: window.currentFilePath, language: currentLanguage }));
+                }
+            });
+
+        });
+    </script>
+</body>
+</html>

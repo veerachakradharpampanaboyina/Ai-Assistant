@@ -1,29 +1,49 @@
-# AI Assistant
+# AI Assistant 🚀
 
-AI Assistant is a powerful desktop application built with WPF and .NET 8 that brings your favorite AI models directly to your desktop. It integrates seamlessly with your workflow through global hotkeys, clipboard monitoring, screen capture, and built-in OCR capabilities.
+AI Assistant is a powerful desktop application built with WPF and .NET 8 that brings your favorite AI models directly to your desktop. It integrates seamlessly with your workflow through global hotkeys, clipboard monitoring, screen capture, and built-in OCR capabilities. 
 
-## Features
+Recently, it has been transformed into a fully autonomous, agentic workspace IDE, allowing the AI to build projects, execute complex workflows, and automate browser tasks completely on its own!
 
-- **Multi-AI Support:** Access popular AI models directly through an integrated WebView2 browser (ChatGPT, Gemini, Claude, DeepSeek, Arena AI, Z.ai).
-- **Autonomous AI Agent Mode:** Fully automated background terminal and filesystem access directly from the chat prompt. The AI can execute multi-step plans, build projects, run scripts, and fix code without manual intervention.
-- **1 Million Token Workspace Context:** Automatically aggregates and ingests up to 1 million tokens of your workspace's file contents into the AI's prompt for perfect codebase memory and precision editing.
-- **Screen Share Privacy:** Built-in settings overlay utilizing Windows Display Affinity layer concepts to completely hide the application window from screen recording software (OBS, Teams, Zoom, etc.).
-- **Agent Execution Status:** Real-time animated status panel indicating when the AI is executing background terminal commands.
-- **Hang-Free Optimization:** Fully asynchronous file I/O and process execution ensures the user interface remains snappy and never freezes during complex agent operations.
+## 🌟 Core Features
+
+### Autonomous Agent Capabilities
+- **Multi-Step Execution:** Fully automated background terminal and filesystem access directly from the chat prompt. The AI can execute multi-step plans, build projects, and write code without manual intervention.
+- **Auto-Debugging:** If a background terminal command fails, the AI will automatically catch the `stderr` output, analyze the issue, and self-correct (up to 3 times in an auto-loop) without needing your input.
+- **Auto-Testing & Verification:** The AI automatically detects your project's test framework (`npm test`, `dotnet test`, `pytest`, etc.) and runs it to verify its code.
+- **Checkpointing:** Long-running tasks are check-pointed. If the IDE restarts, you will be prompted to resume incomplete background agent workflows exactly where they left off.
+
+### Full Workspace IDE
+- **VS Code Style Sidebar:** 6 dedicated panels for ultimate project control:
+  - **File Explorer:** Native tree-view of your workspace.
+  - **Search:** Lightning-fast project-wide text search.
+  - **Git Manager:** Native UI for viewing staged/unstaged changes, committing, pushing, and pulling directly from the IDE.
+  - **AI Agents:** Monitor running background tasks, review conversation history, and check your AI notification inbox.
+  - **Artifacts Viewer:** View AI-generated implementation plans, reports, and persistent design documents.
+  - **Scheduled Tasks:** View crons and scheduled tasks executing asynchronously.
+- **Intelligent Code Editor:** Monaco Editor integration supporting `Ctrl+Shift+P` Command Palette actions! Highlight code and trigger instant AI commands like `Explain`, `Refactor`, or `Debug`.
+- **1 Million Token Context:** Automatically aggregates and ingests your entire workspace's file contents into the AI's prompt for perfect codebase memory.
+
+### Browser Automation Agent
+- **Autonomous Web Navigation:** The AI can launch Chrome invisibly and browse the web, scrape data, and fill forms.
+- **Visual Capture:** Built-in buttons for the AI to instantly take **📸 Screenshots** or **🎥 Record Videos** of web pages, feeding the data directly into your artifacts viewer.
+- **Login Automation:** Securely store secrets in the settings panel so the AI can automatically log into complex dashboards on your behalf.
+
+### Desktop Integration
 - **Global Hotkeys:** 
   - `Ctrl + Shift + A`: Toggle the AI Assistant window instantly.
   - `Ctrl + Shift + F`: Trigger code fixing or context-aware actions based on your clipboard or screen.
-- **Clipboard Monitoring:** Automatically detects when you copy code or text and makes it available for the AI to process.
-- **Screen Capture & OCR:** Built-in screen capture tool that uses Windows native OCR (`Windows.Media.Ocr`) to extract text from your screen and send it to the AI.
-- **Fluent UI:** Modern, responsive design utilizing WPF-UI for a native Windows 11 look and feel.
+- **Clipboard Monitoring:** Automatically detects when you copy code and makes it available to the AI.
+- **Screen Capture & OCR:** Built-in native screen capture that uses Windows Native OCR (`Windows.Media.Ocr`) to extract text and send it to the AI.
+- **Screen Share Privacy:** Advanced settings overlay utilizing Windows Display Affinity to completely hide the application window from screen recording software (OBS, Teams, Zoom).
 
 ## Prerequisites
 
 To run and build this project, you will need:
 - [Windows 10 or Windows 11](https://www.microsoft.com/windows)
 - [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- Visual Studio 2022 (recommended) or VS Code.
-- [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Included in most modern Windows installations by default).
+- Python 3.9+ (For the advanced Browser Automation Agent)
+- Chrome Browser (For Browser Agent)
+- [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Included in modern Windows installations).
 
 ## Setup Process
 
@@ -33,14 +53,16 @@ To run and build this project, you will need:
    cd Ai-Assistant
    ```
 
-2. **Restore Dependencies:**
-   The project uses NuGet for package management. Restore the required packages (like `Microsoft.Web.WebView2`, `NHotkey.Wpf`, `WPF-UI`):
+2. **Install Python Dependencies:**
+   (Required for browser automation & media parsing)
    ```bash
-   dotnet restore
+   pip install playwright python-dotenv PyAutoGUI SpeechRecognition pyttsx3 gTTS
+   playwright install chromium
    ```
 
-3. **Build the Project:**
+3. **Restore & Build:**
    ```bash
+   dotnet restore
    dotnet build
    ```
 
@@ -48,24 +70,15 @@ To run and build this project, you will need:
    ```bash
    dotnet run
    ```
-   *Alternatively, you can open `AIAssistant.csproj` in Visual Studio 2022 and press `F5` to build and launch the application.*
-
-## Working Process
-
-1. **Launch the App:** Upon starting, the app initializes the WebView2 component and loads the default AI provider (e.g., ChatGPT).
-2. **Global Shortcuts:** You can minimize the app and continue your work. Press `Ctrl + Shift + A` at any time to bring the AI Assistant into focus.
-3. **Clipboard Integration:** Whenever you copy text, the built-in clipboard monitor intercepts the copied content, making it instantly available to paste into your AI prompt.
-4. **Screen Capture & OCR:** Use the capture feature to take a snippet of your screen. The application leverages Windows OCR to extract text from the image, which can then be used to query the AI (e.g., reading error messages from images or videos).
-5. **Switching Providers:** Use the dropdown menu in the interface to seamlessly switch between ChatGPT, Gemini, Claude, and other providers without leaving the app.
 
 ## Technologies Used
 
 - **C# / .NET 8.0**
-- **WPF (Windows Presentation Foundation)**
-- **WPF-UI** (For modern fluent design elements)
+- **WPF (Windows Presentation Foundation) & WPF-UI**
+- **Monaco Editor** (For code editing interface)
 - **WebView2** (For embedding web-based AI chats)
-- **NHotkey** (For global system-wide shortcuts)
-- **Windows Native OCR** (For text extraction)
+- **Python / Playwright** (For Browser Agent integration via CDP)
+- **NHotkey** & **Windows Native OCR**
 
 ## License
 

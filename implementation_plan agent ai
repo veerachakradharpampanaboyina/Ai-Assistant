@@ -1,0 +1,362 @@
+# AI IDE — Complete Feature Implementation Plan
+
+Implement all missing "Antigravity-class" AI IDE features into the existing WPF AIAssistant application. The codebase already has a solid foundation — this plan fills every gap across **12 feature domains**.
+
+---
+
+## Current State Analysis
+
+### ✅ Already Implemented (working)
+| Domain | Features |
+|--------|----------|
+| **Core Agent** | Autonomous agent loop, JSON command parsing, multi-strategy extraction, stuck detection, workspace context, auto-loop |
+| **IDE** | Monaco editor (WebView2), file explorer, syntax highlighting, diff viewer (accept/reject), multi-tab editor, code editor tabs |
+| **Browser** | Playwright-based `AutonomousAgent`, CDP connection, click/type/scroll/hover, session save/load, human-like cursor |
+| **Terminal** | Multi-terminal (cmd.exe), input/output, error colorization, problem detection |
+| **Voice** | Background listening, wake words, Google TTS, Windows TTS, manual voice trigger |
+| **File Ops** | create_file, edit_file, read_file, delete_file, list_dir, create_folder |
+| **Settings** | Privacy (screen share hiding), voice/mic selector, TTS engine, secrets manager |
+| **Review** | Pending changes panel, accept/reject all, diff view for edits |
+
+### ❌ Missing Features (to implement)
+
+---
+
+## Proposed Changes
+
+### Phase 1: Core AI Agent Enhancements
+
+#### [MODIFY] [MainWindow.xaml.cs](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/MainWindow.xaml.cs)
+
+**1.1 — Multi-Agent Parallel Execution**
+- Add `ParallelAgentManager` class with a `ConcurrentDictionary<string, AgentTask>` to track multiple agents running simultaneously
+- Each agent gets its own WebView2 instance (hidden) for chat interaction, or runs via direct Gemini API
+- Add UI panel showing all running agents with status (spinning/complete/error)
+- Add agent orchestration: master agent can spawn sub-agents via a new `spawn_agent` command action
+
+**1.2 — Task Planning Before Implementation**
+- Add new agent action `"plan"` that outputs a structured plan (JSON array of steps) before executing
+- Display the plan in a new "Plan" panel in the sidebar with checkboxes
+- Agent must wait for user approval (or auto-approve) before executing the plan
+- Plan steps are tracked with status: `pending → running → success/failed`
+
+**1.3 — Self-Verification of Completed Work**
+- After `task_complete`, automatically run verification:
+  - If a build command was used, re-run it and check exit code
+  - If tests exist, run `dotnet test` / `npm test` / `pytest` automatically
+  - Parse terminal output for errors and report back
+- Add new action `"verify"` that the agent can call to validate its own work
+
+**1.4 — Automatic Debugging**
+- Enhance error detection in terminal output parser (already partially done)
+- When errors are detected: automatically capture the error, relevant file content, and feed back to the AI with a debug prompt
+- Add `"debug"` action: agent reads error output → reads the relevant file → proposes a fix
+- Add retry count (max 3 auto-debug attempts before escalating to user)
+
+**1.5 — Automatic Testing**
+- Add `"run_tests"` agent action that auto-detects the test framework:
+  - Check for `package.json` → `npm test`
+  - Check for `*.csproj` → `dotnet test`
+  - Check for `pytest.ini` / `conftest.py` → `pytest`
+  - Check for `Makefile` → `make test`
+- Parse test output and report pass/fail counts
+- On failure, feed the failing test output back to the agent for auto-fix
+
+**1.6 — Resume Interrupted Tasks**
+- Persist agent state (current task, step index, pending actions) to a JSON file in `.agent_history/`
+- On startup, check for interrupted tasks and offer to resume
+- Add `"checkpoint"` action that saves current progress
+
+**1.7 — Conversation Memory**
+- Save conversation history per workspace in `.agent_history/conversations/`
+- Load previous context when reopening a workspace
+- Add "Memory" panel showing recent conversations with summaries
+
+---
+
+### Phase 2: Enhanced IDE Features
+
+#### [MODIFY] [monaco.html](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/monaco.html)
+
+**2.1 — Intelligent Autocomplete (Tab Completion)**
+- Register a Monaco `CompletionItemProvider` that sends the current line + context to AI
+- Show AI-generated completions in the autocomplete dropdown
+- Tab to accept the suggestion (ghost text style, like GitHub Copilot)
+- Debounce requests to 300ms after last keystroke
+
+**2.2 — Natural Language Code Editing**
+- Add an inline command palette (Ctrl+K) that opens a text input above the current line
+- User types natural language instruction (e.g., "add error handling")
+- AI generates the edit and shows it as a diff inline
+- Accept/reject with Enter/Escape
+
+**2.3 — Multi-File Editing**
+- Extend the `edit_file` action to support batch operations
+- Add `"multi_edit"` action that takes an array of file edits
+- Show all pending edits across files in the Pending Changes panel
+
+**2.4 — Command Palette (Ctrl+Shift+P)**
+- Add a searchable command palette overlay
+- Commands include: Open File, Run Command, Toggle Terminal, Git operations, AI actions
+- Fuzzy search through all available commands
+
+**2.5 — Split Editor**
+- Add a "Split Right" button on editor tabs
+- Allow two Monaco editors side-by-side with a GridSplitter
+- Sync scroll optionally
+
+**2.6 — Search Across Project (Ctrl+Shift+F)**
+- Add a search panel (replaces the 🔍 activity bar icon)
+- Recursive file search with regex support
+- Show results with file paths and line previews
+- Click to open file at that line
+
+#### [MODIFY] [MainWindow.xaml](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/MainWindow.xaml)
+
+**2.7 — Git Integration Panel**
+- Add a Git panel (replaces the 🔀 activity bar icon)
+- Show modified/staged/untracked files
+- Support: `git status`, `git add`, `git commit`, `git push`, `git pull`, `git diff`
+- Show inline diffs for changed files
+- Commit message input with AI-generated commit message suggestion
+
+---
+
+### Phase 3: Browser Agent Enhancements
+
+#### [MODIFY] [autonomous_agent.py](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/autonomous_agent.py)
+
+**3.1 — Screenshot Capture**
+- Add `screenshot(filepath)` method using Playwright's `page.screenshot()`
+- Add `screenshot_element(selector, filepath)` for element-level screenshots
+- Screenshots are returned as base64 to the agent for visual analysis
+
+**3.2 — Browser Recordings**
+- Add `start_recording()` / `stop_recording()` using Playwright's `video` context option
+- Save recordings as `.webm` files in workspace
+
+**3.3 — Allowlist/Denylist Security**
+- Add URL allowlist/denylist in Settings
+- Before every `goto()`, check the URL against the lists
+- Block navigation to denied URLs, warn on unrecognized URLs
+
+**3.4 — Login Workflow Automation**
+- Enhance `AutonomousAgent` with a `login(domain)` method that pulls credentials from the secrets manager
+- Auto-detect common login forms (username/email + password + submit)
+- Support 2FA token input via `ask_question`
+
+#### [MODIFY] [MainWindow.xaml.cs](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/MainWindow.xaml.cs)
+
+**3.5 — New Agent Actions for Browser**
+- Add `"screenshot"` action → calls autonomous agent screenshot, returns image path
+- Add `"browser_navigate"` action → navigates directly without a Python script
+- Add `"get_page_content"` action → returns page text directly
+
+---
+
+### Phase 4: Terminal Enhancements
+
+#### [MODIFY] [MainWindow.xaml.cs](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/MainWindow.xaml.cs)
+
+**4.1 — Background Process Management**
+- Track long-running processes (dev servers, watchers) separately
+- Show running processes in a "Background Tasks" panel
+- Add `"run_background"` agent action for persistent processes
+- Kill/restart from UI
+
+**4.2 — Automatic Retries**
+- On command failure, auto-retry up to 2 times with exponential backoff
+- If the error is a missing package, auto-install and retry
+
+**4.3 — Shell Script Execution**
+- Add `"run_script"` action that creates and executes `.ps1` / `.bat` / `.sh` scripts
+- Proper handling of script exit codes and output capture
+
+---
+
+### Phase 5: Artifact System
+
+#### [NEW] [ArtifactManager.cs](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/ArtifactManager.cs)
+
+**5.1 — Artifact Storage & Management**
+- Create `ArtifactManager` class to manage artifacts in `.agent_history/artifacts/`
+- Support artifact types: `plan`, `report`, `screenshot`, `recording`, `diff`, `markdown`
+- Each artifact has metadata: `id`, `type`, `title`, `timestamp`, `status`
+
+#### [MODIFY] [MainWindow.xaml](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/MainWindow.xaml)
+
+**5.2 — Artifacts Panel UI**
+- Add "Artifacts" tab in the bottom panel (alongside Problems, Output, Terminal)
+- List all artifacts with icons by type
+- Click to preview (markdown rendered, images shown, diffs displayed)
+- Add "Implementation Plans" section that shows task breakdowns
+
+---
+
+### Phase 6: Project Management
+
+#### [MODIFY] [MainWindow.xaml](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/MainWindow.xaml)
+#### [MODIFY] [MainWindow.xaml.cs](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/MainWindow.xaml.cs)
+
+**6.1 — Multiple Workspaces**
+- Add workspace management: save/load workspace configurations
+- Recent workspaces list in a dropdown
+- Each workspace remembers: open files, terminal state, conversation history
+
+**6.2 — Conversation History & Inbox**
+- Save all agent conversations with timestamps
+- Add "History" panel showing past conversations
+- Add "Inbox" for pending items: unanswered questions, failed tasks, notifications
+
+**6.3 — Scheduled Tasks**
+- Add `"schedule"` agent action that runs a command at a future time or on a cron schedule
+- Show scheduled tasks in a panel
+- Support: one-shot timers and recurring schedules
+
+**6.4 — Sidebar Organization**
+- Reorganize the activity bar icons:
+  - 📄 Explorer
+  - 🔍 Search
+  - 🔀 Source Control (Git)
+  - 🤖 AI Agents
+  - 📦 Artifacts
+  - ⏰ Scheduled Tasks
+
+---
+
+### Phase 7: Automation & Hooks
+
+#### [NEW] [HookManager.cs](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/HookManager.cs)
+
+**7.1 — JSON Hooks System**
+- Create a `hooks.json` config file in the workspace root
+- Support hooks: `before_create_file`, `after_create_file`, `before_run_command`, `after_run_command`, `on_error`
+- Each hook can run a shell command or Python script
+- Hooks are executed by the `ProcessAgentCommandAsync` method before/after each action
+
+**7.2 — Workflow Customization**
+- Support custom workflow templates in `.agent_config/workflows/`
+- Each workflow is a JSON file defining a sequence of agent actions
+- Add "Run Workflow" command in the command palette
+
+---
+
+### Phase 8: MCP & Integrations
+
+#### [NEW] [McpManager.cs](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/McpManager.cs)
+
+**8.1 — MCP (Model Context Protocol) Support**
+- Implement MCP client that connects to MCP servers
+- Support tool discovery and invocation
+- Add `"mcp_call"` agent action to invoke MCP tools
+- Configuration in Settings for MCP server URLs
+
+**8.2 — Direct Gemini API Integration**
+- Add option to use Gemini API directly instead of web-based chat
+- API key configuration in Settings
+- This enables: faster response times, no WebView parsing, 1M token context natively
+- Falls back to WebView chat if API key not configured
+
+---
+
+### Phase 9: Enhanced Security
+
+#### [MODIFY] [MainWindow.xaml](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/MainWindow.xaml)
+
+**9.1 — URL Allowlist/Denylist UI**
+- Add allowlist/denylist configuration in Settings
+- Default denylist: banking sites, social media logins
+- User can add/remove entries
+
+**9.2 — Permission Controls**
+- Add per-action permission toggles in Settings:
+  - Allow file creation ✓
+  - Allow file deletion ✓ (with confirmation)
+  - Allow command execution ✓
+  - Allow browser navigation ✓
+  - Allow package installation ✓ (with confirmation)
+- High-risk actions always require user confirmation
+
+**9.3 — Sandboxed Execution**
+- Add option to run agent commands in a sandboxed environment
+- Path traversal protection (already exists, enhance it)
+- Command blocklist: prevent `rm -rf /`, `format`, destructive commands
+
+---
+
+### Phase 10: Code Intelligence Enhancements
+
+#### [MODIFY] [MainWindow.xaml.cs](file:///c:/Users/lokes/.gemini/antigravity-ide/scratch/AIAssistant/MainWindow.xaml.cs)
+
+**10.1 — Code Explanation**
+- Add `"explain_code"` agent action: reads a file/selection and provides a detailed explanation
+- Right-click context menu in Monaco: "Explain This Code"
+- Output appears in the agent chat panel
+
+**10.2 — Code Refactoring**
+- Add `"refactor"` agent action with strategies: extract method, rename, simplify, optimize
+- Show before/after diff for refactoring proposals
+- Support batch refactoring across multiple files
+
+**10.3 — Repository Indexing**
+- On workspace open, build an index of all files, classes, functions, and exports
+- Store index in `.agent_history/repo_index.json`
+- Use the index for faster file lookup and context-aware reasoning
+- Re-index on file save
+
+---
+
+## Implementation Priority (Execution Order)
+
+| Priority | Phase | Impact | Effort |
+|----------|-------|--------|--------|
+| 🔴 P0 | Phase 2 (IDE Enhancements) | High | Medium |
+| 🔴 P0 | Phase 1.1-1.5 (Core Agent) | High | High |
+| 🟡 P1 | Phase 3 (Browser Enhancements) | Medium | Medium |
+| 🟡 P1 | Phase 4 (Terminal) | Medium | Low |
+| 🟡 P1 | Phase 5 (Artifacts) | Medium | Medium |
+| 🟢 P2 | Phase 6 (Project Management) | Medium | High |
+| 🟢 P2 | Phase 7 (Automation/Hooks) | Low | Medium |
+| 🟢 P2 | Phase 8 (MCP/Integrations) | Medium | High |
+| 🟢 P2 | Phase 9 (Security) | Medium | Medium |
+| 🟢 P2 | Phase 10 (Code Intelligence) | High | Medium |
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> This is a **massive implementation** touching every part of the application. The full plan covers ~30+ new features across 12 domains. I recommend we execute in phases, starting with **Phase 1 + Phase 2** (Core Agent + IDE enhancements) as they deliver the highest value.
+
+> [!WARNING]
+> Some features (MCP, Direct Gemini API) require API keys and external dependencies. The implementation will include graceful fallbacks when these are not configured.
+
+> [!CAUTION]
+> The `MainWindow.xaml.cs` file is already 2,715 lines. As part of this implementation, I will **refactor the code into separate class files** (e.g., `AgentManager.cs`, `TerminalManager.cs`, `GitManager.cs`, `ArtifactManager.cs`) to keep the codebase maintainable.
+
+## Open Questions
+
+1. **Gemini API Key**: Do you want to implement direct Gemini API integration now, or keep using the WebView-based chat approach? Direct API would be significantly faster and more reliable.
+
+2. **Phase ordering**: Should I implement all phases sequentially in one go, or would you prefer to review after each phase?
+
+3. **Code refactoring**: Do you approve of extracting large code blocks from `MainWindow.xaml.cs` into separate manager classes? This is essential for maintainability given the scale of changes.
+
+4. **NuGet packages**: Some features may need additional packages (e.g., `LibGit2Sharp` for native Git integration, `Microsoft.Extensions.DependencyInjection` for DI). Are you okay with adding dependencies?
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Build verification: `dotnet build` after each phase
+- Runtime verification: `dotnet run` to confirm app launches without crashes
+
+### Manual Verification
+- Test each new feature manually after implementation
+- Verify Monaco editor enhancements work with Tab completion
+- Test Git panel with an actual Git repository
+- Test browser agent screenshot/recording features
+- Verify search across project returns correct results
+- Test command palette functionality
+- Verify artifact creation and display

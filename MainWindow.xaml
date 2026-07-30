@@ -7,7 +7,7 @@
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
-        Title="AI Assistant" Height="700" Width="900"
+        Title="AI Assistant" Height="700" Width="1400"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica"
         Topmost="True">
@@ -21,97 +21,631 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Title="AI Assistant" Grid.Row="0" />
+        <ui:TitleBar x:Name="TopTitleBar" Title="AI Assistant" Grid.Row="0" />
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="10,5,10,5">
-            <ComboBox x:Name="AiSelector" SelectionChanged="AiSelector_SelectionChanged" Width="120" Margin="0,0,10,0" SelectedIndex="0">
-                <ComboBoxItem Content="ChatGPT"/>
-                <ComboBoxItem Content="Gemini"/>
-                <ComboBoxItem Content="Claude"/>
-                <ComboBoxItem Content="Arena AI"/>
-                <ComboBoxItem Content="DeepSeek"/>
-                <ComboBoxItem Content="Z.ai"/>
-            </ComboBox>
-            <ui:Button Content="Auto-Fix Code" Click="AutoFix_Click" Margin="0,0,10,0"/>
-            <ui:Button Content="Insert Response" Click="InsertResponse_Click" Appearance="Primary" Margin="0,0,10,0"/>
-            <ui:Button Content="Screen Capture" Click="ScreenCapture_Click" Margin="0,0,10,0"/>
-            <ui:Button Content="Settings" Click="OpenSettings_Click" Margin="0,0,10,0"/>
-        </StackPanel>
-
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="10,0,10,5">
-            <ui:Button Content="Set Workspace" Click="SetWorkspace_Click" Margin="0,0,10,0"/>
-            <TextBlock x:Name="WorkspaceText" Text="No workspace..." VerticalAlignment="Center" Margin="0,0,10,0" Width="150" TextTrimming="CharacterEllipsis"/>
-            <TextBlock Text="Canvas:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-            <ComboBox x:Name="CanvasSelector" Width="120" Margin="0,0,10,0" SelectedIndex="0" SelectionChanged="CanvasSelector_SelectionChanged">
-                <ComboBoxItem Content="Code Project"/>
-                <ComboBoxItem Content="Document"/>
-                <ComboBoxItem Content="Presentation"/>
-                <ComboBoxItem Content="Spreadsheet"/>
-            </ComboBox>
-            <TextBlock Text="Format:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-            <ComboBox x:Name="FormatSelector" Width="90" Margin="0,0,10,0" SelectedIndex="0">
-                <ComboBoxItem Content="Any"/>
-            </ComboBox>
-        </StackPanel>
-
-        <Grid Grid.Row="3" Margin="10,0,10,5">
+        <Grid x:Name="TopControlsGrid" Grid.Row="1" Margin="10,5,10,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <ui:TextBox x:Name="UserPromptText" Grid.Column="0" AcceptsReturn="True" TextWrapping="Wrap" Height="65" VerticalScrollBarVisibility="Auto" PlaceholderText="Enter a detailed task prompt, document data, presentation slides, or specific context here..."/>
-            <StackPanel Grid.Column="1" Orientation="Vertical" Margin="10,0,0,0" VerticalAlignment="Center">
-                <ui:Button Content="Init Agent" Click="InitAgent_Click" Appearance="Secondary" Margin="0,0,0,5" HorizontalAlignment="Stretch"/>
-                <StackPanel Orientation="Horizontal">
-                    <ToggleButton x:Name="AutoLoopToggle" Content="Auto-Loop" Checked="AutoLoopToggle_Checked" Unchecked="AutoLoopToggle_Unchecked" Margin="0,0,5,0"/>
-                    <ui:Button Content="Force Exec" Click="ForceExecution_Click"/>
-                </StackPanel>
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <TextBlock Text="Project Workspace" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="SemiBold" Foreground="Gray"/>
             </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <ui:Button Content="Zen Mode (F11)" Click="ZenMode_Click" Appearance="Secondary" Margin="0,0,10,0"/>
+                <ui:Button Content="Settings ⚙" Click="OpenSettings_Click" Appearance="Secondary"/>
+            </StackPanel>
+        </Grid>
+
+        <TabControl x:Name="MainTabControl" Grid.Row="2" Margin="10,5,10,5" Background="Transparent" BorderThickness="0">
+            <TabItem Header="Workspace Agent" FontSize="14">
+                <StackPanel Orientation="Horizontal" Margin="5">
+                    <TextBlock x:Name="WorkspaceText" Text="No workspace..." VerticalAlignment="Center" Margin="0,0,10,0" Width="150" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="Canvas:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <ComboBox x:Name="CanvasSelector" Width="120" Margin="0,0,10,0" SelectedIndex="0" SelectionChanged="CanvasSelector_SelectionChanged">
+                        <ComboBoxItem Content="Code Project"/>
+                        <ComboBoxItem Content="Document"/>
+                        <ComboBoxItem Content="Presentation"/>
+                        <ComboBoxItem Content="Spreadsheet"/>
+                    </ComboBox>
+                    <TextBlock Text="Format:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <ComboBox x:Name="FormatSelector" Width="90" SelectedIndex="0">
+                        <ComboBoxItem Content="Any"/>
+                    </ComboBox>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Voice Assistant" FontSize="14">
+                <StackPanel Orientation="Horizontal" Margin="5">
+                    <ToggleButton x:Name="VoiceModeMainToggle" Content="Voice Mode" IsChecked="{Binding ElementName=EnableVoiceModeCheckbox, Path=IsChecked}" Checked="VoiceModeMainToggle_Checked" Unchecked="VoiceModeMainToggle_Unchecked" Margin="0,0,10,0"/>
+                    <ui:Button x:Name="VoiceCommandBtn" Content="🎤 Manual Voice" Click="VoiceCommand_Click" Appearance="Primary" Margin="0,0,10,0"/>
+                    <TextBlock Text="Language:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <ComboBox x:Name="LanguageSelector" Width="80" SelectedIndex="0">
+                        <ComboBoxItem Content="en-US" ToolTip="English"/>
+                        <ComboBoxItem Content="hi-IN" ToolTip="Hindi"/>
+                        <ComboBoxItem Content="te-IN" ToolTip="Telugu"/>
+                        <ComboBoxItem Content="ta-IN" ToolTip="Tamil"/>
+                        <ComboBoxItem Content="es-ES" ToolTip="Spanish"/>
+                    </ComboBox>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="IDE Tools" FontSize="14">
+                <StackPanel Orientation="Horizontal" Margin="5">
+                    <ui:Button Content="Auto-Fix Code" Click="AutoFix_Click" Margin="0,0,10,0"/>
+                    <ui:Button Content="Insert Response" Click="InsertResponse_Click" Margin="0,0,10,0"/>
+                    <ui:Button Content="Screen Capture" Click="ScreenCapture_Click" Margin="0,0,10,0"/>
+                    <ui:Button Content="Index Repo" Click="IndexRepo_Click" Appearance="Secondary"/>
+                </StackPanel>
+            </TabItem>
+            
+            <TabItem Header="Browser Agent" FontSize="14" Name="BrowserAgentTab">
+                <StackPanel Orientation="Horizontal" Margin="5">
+                    <TextBlock Text="Autonomous Web Navigation Enabled" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="Gray" Margin="0,0,10,0"/>
+                    <ui:Button Content="📸 Screenshot" Click="BrowserScreenshot_Click" Appearance="Secondary" Margin="0,0,5,0"/>
+                    <ui:Button Content="🎥 Record" Click="BrowserRecord_Click" Appearance="Secondary"/>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Code Editor (IDE)" FontSize="14" Name="IdeTab">
+                <StackPanel Orientation="Horizontal" Margin="5">
+                    <Border Background="#2E7D32" CornerRadius="4" Padding="5,2" Margin="0,0,10,0">
+                        <TextBlock Text="1M Token Context Enabled (Gemini)" VerticalAlignment="Center" FontWeight="Bold" Foreground="White" FontSize="12"/>
+                    </Border>
+                    <ui:Button Content="Load Workspace into Context" Click="LoadWorkspaceContext_Click" Appearance="Primary" Margin="0,0,10,0"/>
+                    <TextBlock Text="Monaco Editor Active" VerticalAlignment="Center" Foreground="Gray"/>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+
+        <Grid x:Name="AiInputGrid" Grid.Row="3" Margin="10,0,10,5" Visibility="Collapsed">
         </Grid>
 
         <Grid Grid.Row="4">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" x:Name="CodeEditorColumn" />
+                <ColumnDefinition Width="5" x:Name="CodeEditorSplitterColumn" />
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="5"/>
                 <ColumnDefinition Width="350"/>
             </Grid.ColumnDefinitions>
 
-            <wv2:WebView2 x:Name="webView" Source="https://chatgpt.com" Grid.Column="0" />
+            <Grid x:Name="IdeLayoutGrid" Grid.Column="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="48" />
+                    <ColumnDefinition Width="200" x:Name="SidebarColumn" />
+                    <ColumnDefinition Width="5" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="LightGray"/>
+                <!-- Activity Bar (Enhanced) -->
+                <Border Grid.Column="0" Background="#181818" BorderBrush="#222" BorderThickness="0,0,1,0">
+                    <StackPanel Orientation="Vertical" Margin="0,10,0,0">
+                        <Border x:Name="ActExplorer" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="ActivityBar_Click" Tag="explorer" Padding="0,8" ToolTip="Explorer">
+                            <TextBlock Text="📄" FontSize="20" Foreground="White" HorizontalAlignment="Center"/>
+                        </Border>
+                        <Border x:Name="ActSearch" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="ActivityBar_Click" Tag="search" Padding="0,8" ToolTip="Search">
+                            <TextBlock Text="🔍" FontSize="20" Foreground="Gray" HorizontalAlignment="Center"/>
+                        </Border>
+                        <Border x:Name="ActGit" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="ActivityBar_Click" Tag="git" Padding="0,8" ToolTip="Source Control">
+                            <TextBlock Text="🔀" FontSize="20" Foreground="Gray" HorizontalAlignment="Center"/>
+                        </Border>
+                        <Border x:Name="ActAgents" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="ActivityBar_Click" Tag="agents" Padding="0,8" ToolTip="AI Agents">
+                            <TextBlock Text="🤖" FontSize="20" Foreground="Gray" HorizontalAlignment="Center"/>
+                        </Border>
+                        <Border x:Name="ActArtifacts" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="ActivityBar_Click" Tag="artifacts" Padding="0,8" ToolTip="Artifacts">
+                            <TextBlock Text="📦" FontSize="20" Foreground="Gray" HorizontalAlignment="Center"/>
+                        </Border>
+                        <Border x:Name="ActSchedule" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="ActivityBar_Click" Tag="schedule" Padding="0,8" ToolTip="Scheduled Tasks">
+                            <TextBlock Text="⏰" FontSize="20" Foreground="Gray" HorizontalAlignment="Center"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
 
-            <Grid Grid.Column="2" Margin="5">
+                <!-- Sidebar Panels (Stacked, only one visible at a time) -->
+                <Grid Grid.Column="1" Background="#252526">
+                    <!-- File Explorer Panel -->
+                    <Grid x:Name="ExplorerPanel" Visibility="Visible">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="10,10,10,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="EXPLORER" Foreground="#CCCCCC" VerticalAlignment="Center" FontSize="11"/>
+                            <ui:Button Grid.Column="1" Content="Open Folder" Click="SetWorkspace_Click" Appearance="Secondary" Padding="5,2"/>
+                        </Grid>
+                        <TreeView x:Name="FileExplorerTree" Grid.Row="1" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" MouseDoubleClick="FileExplorerTree_MouseDoubleClick">
+                            <TreeView.ItemContainerStyle>
+                                <Style TargetType="TreeViewItem">
+                                    <Setter Property="Foreground" Value="#CCCCCC"/>
+                                    <Setter Property="Padding" Value="2"/>
+                                </Style>
+                            </TreeView.ItemContainerStyle>
+                        </TreeView>
+                    </Grid>
+
+                    <!-- Search Panel -->
+                    <Grid x:Name="SearchPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="SEARCH" Foreground="#CCCCCC" FontSize="11" Margin="10,10,10,5"/>
+                        <ui:TextBox x:Name="ProjectSearchInput" Grid.Row="1" PlaceholderText="Search files..." Margin="10,0,10,10" KeyDown="ProjectSearchInput_KeyDown"/>
+                        <ListBox x:Name="SearchResultsList" Grid.Row="2" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" MouseDoubleClick="SearchResultsList_MouseDoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" Margin="0,0,0,2"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <!-- Git Panel -->
+                    <Grid x:Name="GitPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="10,10,10,5">
+                            <TextBlock Text="SOURCE CONTROL" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <TextBlock x:Name="GitBranchText" Text="main" Foreground="#4FC3F7" FontSize="11" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <Button Content="↻" Background="Transparent" Foreground="#CCC" BorderThickness="0" Click="GitRefresh_Click" FontSize="12" Padding="3,0" ToolTip="Refresh"/>
+                            </StackPanel>
+                        </Grid>
+                        <ui:TextBox x:Name="GitCommitMsg" Grid.Row="1" PlaceholderText="Commit message..." Margin="10,0,10,5" AcceptsReturn="True" Height="50"/>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="10,0,10,5">
+                            <ui:Button Content="✓ Commit" Click="GitCommit_Click" Appearance="Primary" Height="24" Padding="5,0" Margin="0,0,5,0"/>
+                            <ui:Button Content="+ Stage All" Click="GitStageAll_Click" Appearance="Secondary" Height="24" Padding="5,0" Margin="0,0,5,0"/>
+                            <ui:Button Content="↑ Push" Click="GitPush_Click" Appearance="Secondary" Height="24" Padding="5,0" Margin="0,0,5,0"/>
+                            <ui:Button Content="↓ Pull" Click="GitPull_Click" Appearance="Secondary" Height="24" Padding="5,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="3" Text="Staged Changes" Foreground="#4CAF50" FontSize="11" Margin="10,5,10,2"/>
+                        <ListBox x:Name="GitStagedList" Grid.Row="4" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Margin="5,0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock TextWrapping="NoWrap" FontFamily="Consolas" FontSize="11">
+                                        <Run Text="{Binding StatusIcon}" /><Run Text=" " /><Run Text="{Binding FilePath}" />
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Grid.Row="5" Text="Changes" Foreground="#FF9800" FontSize="11" Margin="10,5,10,2"/>
+                        <ListBox x:Name="GitUnstagedList" Grid.Row="6" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Margin="5,0" MouseDoubleClick="GitUnstagedList_DoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock TextWrapping="NoWrap" FontFamily="Consolas" FontSize="11">
+                                        <Run Text="{Binding StatusIcon}" /><Run Text=" " /><Run Text="{Binding FilePath}" />
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <!-- AI Agents Panel -->
+                    <Grid x:Name="AgentsPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="AI AGENTS" Foreground="#CCCCCC" FontSize="11" Margin="10,10,10,5"/>
+                        <TextBlock Grid.Row="1" Text="Background Tasks" Foreground="#4FC3F7" FontSize="11" Margin="10,5,10,2"/>
+                        <ListBox x:Name="BackgroundTasksList" Grid.Row="2" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Margin="5,0" MaxHeight="150">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Grid.Row="3" Text="Conversation History" Foreground="#4FC3F7" FontSize="11" Margin="10,10,10,2"/>
+                        <ListBox x:Name="ConversationHistoryList" Grid.Row="4" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Margin="5,0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" Margin="0,0,0,2"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <StackPanel Grid.Row="5" Margin="10,5">
+                            <TextBlock Text="Inbox" Foreground="#FF9800" FontSize="11" Margin="0,0,0,2"/>
+                            <ListBox x:Name="InboxList" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" MaxHeight="120">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,2"/>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Artifacts Panel -->
+                    <Grid x:Name="ArtifactsPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="ARTIFACTS" Foreground="#CCCCCC" FontSize="11" Margin="10,10,10,5"/>
+                        <TextBlock Grid.Row="1" Text="Implementation Plan" Foreground="#4FC3F7" FontSize="11" Margin="10,5,10,2"/>
+                        <ListBox x:Name="PlanStepsList" Grid.Row="2" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Margin="5,0" MaxHeight="200">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,2"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Grid.Row="3" Text="All Artifacts" Foreground="#4FC3F7" FontSize="11" Margin="10,10,10,2"/>
+                        <ListBox x:Name="ArtifactsList" Grid.Row="4" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Margin="5,0" MouseDoubleClick="ArtifactsList_DoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding DisplayTitle}" FontSize="11" Foreground="#E0E0E0"/>
+                                        <TextBlock Text="{Binding TimeAgo}" FontSize="10" Foreground="#666"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <!-- Scheduled Tasks Panel -->
+                    <Grid x:Name="SchedulePanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="SCHEDULED TASKS" Foreground="#CCCCCC" FontSize="11" Margin="10,10,10,5"/>
+                        <ListBox x:Name="ScheduledTasksList" Grid.Row="1" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Margin="5,0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,4"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Grid>
+
+                <GridSplitter Grid.Column="2" Width="5" HorizontalAlignment="Stretch" Background="#252526"/>
+
+                <Grid Grid.Column="3">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="5" />
+                        <RowDefinition Height="250" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Background="#1E1E1E">
+                        <TabControl x:Name="EditorTabControl" Background="Transparent" BorderThickness="0" Foreground="Gray">
+                            <TabControl.Resources>
+                                <Style TargetType="TabItem">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="TabItem">
+                                                <Border Name="Border" Padding="10,5" BorderThickness="0,1,1,0" BorderBrush="#1E1E1E" Background="#2D2D2D">
+                                                    <ContentPresenter x:Name="ContentSite" VerticalAlignment="Center" HorizontalAlignment="Center" ContentSource="Header"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Border" Property="BorderBrush" Value="#007ACC" />
+                                                        <Setter TargetName="Border" Property="Background" Value="#1E1E1E" />
+                                                        <Setter Property="Foreground" Value="White" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="False">
+                                                        <Setter Property="Foreground" Value="Gray" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </TabControl.Resources>
+                        </TabControl>
+                    </Grid>
+
+                    <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="#1E1E1E"/>
+
+                    <!-- Bottom Panel -->
+                    <Grid Grid.Row="2" Background="#1E1E1E">
+                        <TabControl Background="Transparent" BorderThickness="0" Foreground="Gray">
+                            <TabControl.Resources>
+                                <Style TargetType="TabItem">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="TabItem">
+                                                <Border Name="Border" Padding="5,0" BorderThickness="0,0,0,1" BorderBrush="Transparent">
+                                                    <ContentPresenter x:Name="ContentSite" VerticalAlignment="Center" HorizontalAlignment="Center" ContentSource="Header" Margin="5,2"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Border" Property="BorderBrush" Value="#007ACC" />
+                                                        <Setter Property="Foreground" Value="White" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="False">
+                                                        <Setter Property="Foreground" Value="Gray" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </TabControl.Resources>
+                            
+                            <TabItem Header="PROBLEMS">
+                                <ListView x:Name="ProblemsListView" Background="#1E1E1E" Foreground="#CCCCCC" BorderThickness="0" Margin="5">
+                                    <ListView.View>
+                                        <GridView>
+                                            <GridViewColumn Header="Severity" Width="80" DisplayMemberBinding="{Binding Severity}" />
+                                            <GridViewColumn Header="File" Width="150" DisplayMemberBinding="{Binding File}" />
+                                            <GridViewColumn Header="Line" Width="60" DisplayMemberBinding="{Binding Line}" />
+                                            <GridViewColumn Header="Message" Width="600" DisplayMemberBinding="{Binding Message}" />
+                                        </GridView>
+                                    </ListView.View>
+                                </ListView>
+                            </TabItem>
+                            
+                            <TabItem Header="OUTPUT">
+                                <RichTextBox x:Name="OutputTabRTB" Background="#1E1E1E" Foreground="#CCCCCC" BorderThickness="0" FontFamily="Consolas" IsReadOnly="True" VerticalScrollBarVisibility="Auto" Margin="5">
+                                    <FlowDocument>
+                                        <Paragraph x:Name="OutputTabParagraph"/>
+                                    </FlowDocument>
+                                </RichTextBox>
+                            </TabItem>
+
+                            <TabItem Header="DEBUG CONSOLE">
+                                <TextBlock Text="Please start a debugging session to evaluate expressions." Foreground="Gray" Margin="10"/>
+                            </TabItem>
+
+                            <TabItem Header="TERMINAL" IsSelected="True">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,10,5">
+                                        <ComboBox x:Name="TerminalSelector" Width="100" Margin="0,0,10,0" SelectionChanged="TerminalSelector_SelectionChanged" Background="#252526" Foreground="White" BorderThickness="1" BorderBrush="#333"/>
+                                        <Button x:Name="NewTerminalBtn" Content="+" Width="20" Background="#252526" Foreground="White" BorderThickness="1" BorderBrush="#333" Click="NewTerminalBtn_Click"/>
+                                    </StackPanel>
+                                    <RichTextBox x:Name="TerminalOutputRTB" Grid.Row="1" Background="#1E1E1E" Foreground="#CCCCCC" BorderThickness="0" FontFamily="Consolas" IsReadOnly="True" VerticalScrollBarVisibility="Auto" Margin="5">
+                                        <FlowDocument>
+                                            <Paragraph x:Name="TerminalParagraph"/>
+                                        </FlowDocument>
+                                    </RichTextBox>
+                                    <TextBox x:Name="TerminalInput" Grid.Row="2" Background="#2D2D2D" Foreground="White" BorderThickness="0,1,0,0" BorderBrush="#333333" FontFamily="Consolas" Margin="0" KeyDown="TerminalInput_KeyDown" Padding="5,2" />
+                                </Grid>
+                            </TabItem>
+
+                            <TabItem Header="PORTS">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,10,5">
+                                        <Button x:Name="RefreshPortsBtn" Content="↻ Refresh" Background="#252526" Foreground="White" BorderThickness="1" BorderBrush="#333" Click="RefreshPortsBtn_Click"/>
+                                    </StackPanel>
+                                    <ListView x:Name="PortsListView" Grid.Row="1" Background="#1E1E1E" Foreground="#CCCCCC" BorderThickness="0" Margin="5">
+                                        <ListView.View>
+                                            <GridView>
+                                                <GridViewColumn Header="Port" Width="100" DisplayMemberBinding="{Binding Port}" />
+                                                <GridViewColumn Header="Address" Width="150" DisplayMemberBinding="{Binding Address}" />
+                                                <GridViewColumn Header="Status" Width="100" DisplayMemberBinding="{Binding Status}" />
+                                            </GridView>
+                                        </ListView.View>
+                                    </ListView>
+                                </Grid>
+                            </TabItem>
+                        </TabControl>
+                    </Grid>
+                </Grid>
+            </Grid>
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="LightGray" x:Name="CodeEditorSplitter"/>
+
+            <wv2:WebView2 x:Name="webView" Source="https://chatgpt.com" Grid.Column="2" />
+
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="LightGray"/>
+
+            <Grid Grid.Column="4" Background="#1E1E1E">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <TextBlock Text="Agent Execution Log" FontWeight="Bold" Margin="0,0,0,5" Grid.Row="0"/>
-                <ListBox x:Name="AgentLogList" Grid.Row="1" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                
+                <!-- Chat Header (Provider Selector) -->
+                <Border Grid.Row="0" Background="#252526" Padding="10" BorderThickness="0,0,0,1" BorderBrush="#333">
+                    <Grid>
+                        <TextBlock Text="Copilot Chat" FontWeight="SemiBold" Foreground="#CCCCCC" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                        <ComboBox x:Name="AiSelector" SelectionChanged="AiSelector_SelectionChanged" Width="100" SelectedIndex="0" Background="#333" Foreground="White" BorderThickness="0" HorizontalAlignment="Right">
+                            <ComboBoxItem Content="ChatGPT"/>
+                            <ComboBoxItem Content="Gemini"/>
+                            <ComboBoxItem Content="Claude"/>
+                            <ComboBoxItem Content="Arena AI"/>
+                            <ComboBoxItem Content="DeepSeek"/>
+                            <ComboBoxItem Content="Z.ai"/>
+                        </ComboBox>
+                    </Grid>
+                </Border>
+                
+                <!-- Execution Log (Chat History proxy) -->
+                <ListBox x:Name="AgentLogList" Grid.Row="1" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="5">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
+                            <TextBlock Text="{Binding}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" Margin="0,0,0,5"/>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <StackPanel x:Name="TerminalStatusPanel" Grid.Row="2" Orientation="Horizontal" Visibility="Collapsed" Margin="0,5,0,0">
+
+                <StackPanel x:Name="TerminalStatusPanel" Grid.Row="2" Orientation="Horizontal" Visibility="Collapsed" Margin="5">
                     <ui:ProgressRing IsIndeterminate="True" Width="16" Height="16" Margin="0,0,8,0"/>
-                    <TextBlock x:Name="TerminalStatusText" Text="Running command..." VerticalAlignment="Center" FontStyle="Italic" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="TerminalStatusText" Text="Running command..." VerticalAlignment="Center" FontStyle="Italic" TextTrimming="CharacterEllipsis" Foreground="Gray" FontSize="11"/>
                 </StackPanel>
+
+                <!-- Chat Input Box -->
+                <Border Grid.Row="3" Background="#252526" Padding="10" BorderThickness="0,1,0,0" BorderBrush="#333">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Pending Changes UI -->
+                        <Border Grid.Row="0" x:Name="PendingChangesPanel" Visibility="Collapsed" Background="#1E1E1E" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Padding="5" Margin="0,0,0,10">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Margin="0,0,0,5">
+                                    <TextBlock Text="Pending Changes" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <ui:Button Content="✓ Accept All" Click="AcceptAllChanges_Click" Appearance="Primary" Height="24" Padding="5,0" Margin="0,0,5,0"/>
+                                        <ui:Button Content="✕ Reject All" Click="RejectAllChanges_Click" Appearance="Danger" Height="24" Padding="5,0"/>
+                                    </StackPanel>
+                                </Grid>
+                                <ListView x:Name="PendingChangesList" Grid.Row="1" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" MaxHeight="100" SelectionChanged="PendingChangesList_SelectionChanged">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding FileName}" Foreground="#4CAF50" Cursor="Hand"/>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Border>
+
+                        <ui:TextBox x:Name="UserPromptText" Grid.Row="1" AcceptsReturn="True" TextWrapping="Wrap" Height="65" VerticalScrollBarVisibility="Auto" PlaceholderText="Ask Copilot a question or describe a task..." Margin="0,0,0,10"/>
+                        
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <ToggleButton x:Name="AutoLoopToggle" Content="Auto-Loop" Checked="AutoLoopToggle_Checked" Unchecked="AutoLoopToggle_Unchecked" Margin="0,0,5,0" Height="28"/>
+                            <ui:Button Content="Force Exec" Click="ForceExecution_Click" Margin="0,0,5,0" Height="28" Appearance="Secondary"/>
+                            <ui:Button Content="Submit" Click="InitAgent_Click" Appearance="Primary" Height="28"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </Grid>
         </Grid>
 
-        <!-- Settings Overlay -->
-        <Grid x:Name="SettingsOverlay" Grid.RowSpan="5" Visibility="Collapsed" Background="#80000000">
-            <Border Background="{DynamicResource ApplicationBackgroundBrush}" CornerRadius="8" Padding="20" HorizontalAlignment="Center" VerticalAlignment="Center" Width="400">
-                <StackPanel>
-                    <TextBlock Text="Settings" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
+        <!-- Full Settings Page Overlay -->
+        <Grid x:Name="SettingsOverlay" Grid.RowSpan="5" Visibility="Collapsed" Background="{DynamicResource ApplicationBackgroundBrush}">
+            <Border Padding="20" HorizontalAlignment="Center" VerticalAlignment="Center" Width="650" MaxHeight="700" Background="{DynamicResource ApplicationBackgroundBrush}" CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
                     
-                    <CheckBox x:Name="AllowScreenShareCheckbox" Content="Show this application in screen share" Checked="AllowScreenShareCheckbox_Changed" Unchecked="AllowScreenShareCheckbox_Changed" IsChecked="False"/>
-                    <TextBlock Text="When unchecked, the app is hidden from screen recording/sharing." FontSize="11" Foreground="Gray" Margin="25,0,0,20" TextWrapping="Wrap"/>
+                    <Grid Grid.Row="0" Margin="0,0,0,20">
+                        <TextBlock Text="Settings" FontSize="28" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <ui:Button Content="✕" FontSize="16" Click="CloseSettings_Click" Appearance="Transparent" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="8,4" />
+                    </Grid>
                     
-                    <ui:Button Content="Close" Click="CloseSettings_Click" HorizontalAlignment="Right" Appearance="Primary"/>
-                </StackPanel>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="0,0,10,0">
+                            <TextBlock Text="Privacy" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                            <CheckBox x:Name="AllowScreenShareCheckbox" Content="Show this application in screen share" Checked="AllowScreenShareCheckbox_Changed" Unchecked="AllowScreenShareCheckbox_Changed" IsChecked="False"/>
+                            <TextBlock Text="When unchecked, the app is hidden from screen recording/sharing." FontSize="11" Foreground="Gray" Margin="25,0,0,20" TextWrapping="Wrap"/>
+                            
+                            <Separator Margin="0,10,0,20"/>
+                            
+                            <TextBlock Text="Voice &amp; Audio" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                            
+                            <Grid Margin="0,0,0,15">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Microphone:" VerticalAlignment="Center" Grid.Column="0"/>
+                                <ComboBox x:Name="MicSelector" Grid.Column="1" HorizontalAlignment="Stretch"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,0,0,15">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Output Voice (TTS):" VerticalAlignment="Center" Grid.Column="0"/>
+                                <ComboBox x:Name="VoiceSelector" Grid.Column="1" HorizontalAlignment="Stretch"/>
+                            </Grid>
+
+                            <CheckBox x:Name="EnableVoiceModeCheckbox" Content="Enable Conversational Voice Mode" IsChecked="True" Margin="0,0,0,5"/>
+                            <TextBlock Text="When enabled, the AI will act as a voice assistant." FontSize="11" Foreground="Gray" Margin="0,0,0,15" TextWrapping="Wrap"/>
+
+                            <CheckBox x:Name="EnableTTSCheckbox" Content="Enable AI Voice Output" IsChecked="True" Margin="0,0,0,5"/>
+
+                            <TextBlock Text="TTS Engine:" Margin="0,10,0,2" FontWeight="SemiBold"/>
+                            <ComboBox x:Name="TTSEngineSelector" Margin="0,0,0,10">
+                                <ComboBoxItem Content="Windows (Offline)" Tag="Windows" />
+                                <ComboBoxItem Content="Google (Online - High Quality)" Tag="Google" IsSelected="True" />
+                            </ComboBox>
+
+                            <TextBlock Text="TTS Voice (Windows Only):" Margin="0,10,0,2" FontWeight="SemiBold"/>
+                            <TextBlock Text="Reads AI responses aloud using the selected voice." FontSize="11" Foreground="Gray" Margin="0,0,0,20" TextWrapping="Wrap"/>
+                            
+                            <Separator Margin="0,10,0,20"/>
+
+                            <!-- Security Settings -->
+                            <TextBlock Text="Security &amp; Permissions" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                            <CheckBox x:Name="AllowFileCreationCheckbox" Content="Allow AI to create files" IsChecked="True" Margin="0,0,0,5"/>
+                            <CheckBox x:Name="AllowFileDeletionCheckbox" Content="Allow AI to delete files (with confirmation)" IsChecked="True" Margin="0,0,0,5"/>
+                            <CheckBox x:Name="AllowCommandExecCheckbox" Content="Allow AI to execute commands" IsChecked="True" Margin="0,0,0,5"/>
+                            <CheckBox x:Name="AllowBrowserNavCheckbox" Content="Allow AI browser navigation" IsChecked="True" Margin="0,0,0,5"/>
+                            <CheckBox x:Name="AllowPackageInstallCheckbox" Content="Allow AI to install packages" IsChecked="True" Margin="0,0,0,15"/>
+
+                            <TextBlock Text="URL Denylist (one per line):" Margin="0,0,0,2" FontWeight="SemiBold"/>
+                            <TextBox x:Name="UrlDenylistInput" AcceptsReturn="True" Height="60" TextWrapping="Wrap" Text="*.bank.*&#x0a;*.paypal.com" Margin="0,0,0,15" VerticalScrollBarVisibility="Auto"/>
+
+                            <TextBlock Text="URL Allowlist (empty = allow all):" Margin="0,0,0,2" FontWeight="SemiBold"/>
+                            <TextBox x:Name="UrlAllowlistInput" AcceptsReturn="True" Height="60" TextWrapping="Wrap" Margin="0,0,0,15" VerticalScrollBarVisibility="Auto"/>
+
+                            <Separator Margin="0,10,0,20"/>
+                            
+                            <TextBlock Text="Secrets Manager (Browser Access)" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                            <TextBlock Text="Store credentials for the AI to securely log into websites on your behalf." FontSize="11" Foreground="Gray" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                            
+                            <DataGrid x:Name="SecretsDataGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" HeadersVisibility="Column" Background="Transparent" RowBackground="Transparent" MaxHeight="150" Margin="0,0,0,10" HorizontalGridLinesBrush="#33808080" VerticalGridLinesBrush="#33808080" BorderBrush="#33808080">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Domain" Binding="{Binding Domain}" Width="150" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="150" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Password" Binding="{Binding HiddenPassword}" Width="*" IsReadOnly="True" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <Grid Margin="0,0,0,15">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBox x:Name="SecretDomainInput" PlaceholderText="Domain (e.g. github.com)" Margin="0,0,5,0" Grid.Column="0" />
+                                <ui:TextBox x:Name="SecretUsernameInput" PlaceholderText="Username" Margin="0,0,5,0" Grid.Column="1" />
+                                <ui:PasswordBox x:Name="SecretPasswordInput" PlaceholderText="Password" Margin="0,0,5,0" Grid.Column="2" />
+                                <ui:Button Content="Add" Click="AddSecret_Click" Grid.Column="3" Margin="0,0,5,0" Appearance="Secondary"/>
+                                <ui:Button Content="Del" Click="DeleteSecret_Click" Grid.Column="4" Appearance="Danger"/>
+                            </Grid>
+
+                            <ui:Button Content="Close Settings" Click="CloseSettings_Click" HorizontalAlignment="Right" Appearance="Primary" Margin="0,20,0,0"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </Border>
         </Grid>
     </Grid>
