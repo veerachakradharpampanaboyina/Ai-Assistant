@@ -35,6 +35,7 @@
             <ui:Button Content="Auto-Fix Code" Click="AutoFix_Click" Margin="0,0,10,0"/>
             <ui:Button Content="Insert Response" Click="InsertResponse_Click" Appearance="Primary" Margin="0,0,10,0"/>
             <ui:Button Content="Screen Capture" Click="ScreenCapture_Click" Margin="0,0,10,0"/>
+            <ui:Button Content="Settings" Click="OpenSettings_Click" Margin="0,0,10,0"/>
         </StackPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="10,0,10,5">
@@ -83,6 +84,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <TextBlock Text="Agent Execution Log" FontWeight="Bold" Margin="0,0,0,5" Grid.Row="0"/>
                 <ListBox x:Name="AgentLogList" Grid.Row="1" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
@@ -92,7 +94,25 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                <StackPanel x:Name="TerminalStatusPanel" Grid.Row="2" Orientation="Horizontal" Visibility="Collapsed" Margin="0,5,0,0">
+                    <ui:ProgressRing IsIndeterminate="True" Width="16" Height="16" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="TerminalStatusText" Text="Running command..." VerticalAlignment="Center" FontStyle="Italic" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
             </Grid>
+        </Grid>
+
+        <!-- Settings Overlay -->
+        <Grid x:Name="SettingsOverlay" Grid.RowSpan="5" Visibility="Collapsed" Background="#80000000">
+            <Border Background="{DynamicResource ApplicationBackgroundBrush}" CornerRadius="8" Padding="20" HorizontalAlignment="Center" VerticalAlignment="Center" Width="400">
+                <StackPanel>
+                    <TextBlock Text="Settings" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
+                    
+                    <CheckBox x:Name="AllowScreenShareCheckbox" Content="Show this application in screen share" Checked="AllowScreenShareCheckbox_Changed" Unchecked="AllowScreenShareCheckbox_Changed" IsChecked="False"/>
+                    <TextBlock Text="When unchecked, the app is hidden from screen recording/sharing." FontSize="11" Foreground="Gray" Margin="25,0,0,20" TextWrapping="Wrap"/>
+                    
+                    <ui:Button Content="Close" Click="CloseSettings_Click" HorizontalAlignment="Right" Appearance="Primary"/>
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </ui:FluentWindow>

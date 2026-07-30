@@ -35,6 +35,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private List<string> _recentCommands = new List<string>();
     private const int MaxAutonomousSteps = int.MaxValue;
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern uint SetWindowDisplayAffinity(IntPtr hwnd, uint dwAffinity);
+
+    const uint WDA_NONE = 0x00000000;
+    const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -56,6 +62,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         try
         {
+            UpdateScreenShareAffinity();
+
             _clipboardMonitor = new ClipboardMonitor();
             _clipboardMonitor.ClipboardChanged += ClipboardMonitor_ClipboardChanged;
             _clipboardMonitor.Start(this);
@@ -452,6 +460,80 @@ Here is the code snippet (with line numbers added for reference):
         FormatSelector.SelectedIndex = 0;
     }
 
+    private async Task<string> BuildWorkspaceContextAsync(string workspacePath)
+    {
+        if (string.IsNullOrWhiteSpace(workspacePath) || !Directory.Exists(workspacePath))
+            return "";
+
+        var sb = new StringBuilder();
+        sb.AppendLine("WORKSPACE CONTEXT:");
+        sb.AppendLine("The following are the contents of the files currently in the workspace:");
+        
+        string[] ignoredDirs = { ".git", ".vs", "node_modules", "bin", "obj", ".agent_history", "packages" };
+        string[] ignoredExtensions = { ".exe", ".dll", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".zip", ".tar", ".gz", ".7z", ".pdf", ".docx", ".pptx", ".xlsx", ".mp4", ".mp3", ".wav", ".pdb", ".cache", ".sqlite", ".db" };
+
+        int totalChars = 0;
+        const int MaxChars = 500000; // Cap at ~500KB to prevent browser freezing
+
+        try
+        {
+            var allFiles = await Task.Run(() => Directory.GetFiles(workspacePath, "*.*", SearchOption.AllDirectories));
+            
+            foreach (var file in allFiles)
+            {
+                if (totalChars > MaxChars)
+                {
+                    sb.AppendLine("\n[WORKSPACE CONTEXT TRUNCATED DUE TO SIZE LIMIT]");
+                    break;
+                }
+
+                // Skip ignored directories
+                bool skip = false;
+                foreach (var dir in ignoredDirs)
+                {
+                    if (file.Contains(System.IO.Path.DirectorySeparatorChar + dir + System.IO.Path.DirectorySeparatorChar) ||
+                        file.EndsWith(System.IO.Path.DirectorySeparatorChar + dir))
+                    {
+                        skip = true;
+                        break;
+                    }
+                }
+                if (skip) continue;
+
+                // Skip ignored extensions
+                string ext = System.IO.Path.GetExtension(file).ToLower();
+                if (ignoredExtensions.Contains(ext)) continue;
+
+                try
+                {
+                    var fileInfo = new FileInfo(file);
+                    if (fileInfo.Length > 1024 * 1024) // Skip files > 1MB
+                        continue;
+
+                    string content = await File.ReadAllTextAsync(file);
+                    
+                    // Basic binary check (heuristic)
+                    if (content.Contains('\0')) continue;
+                    
+                    string relativePath = System.IO.Path.GetRelativePath(workspacePath, file);
+                    string block = $"\n--- FILE: {relativePath} ---\n{content}\n-----------------------------";
+                    sb.AppendLine(block);
+                    totalChars += block.Length;
+                }
+                catch
+                {
+                    // Ignore read errors
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine($"Error reading workspace context: {ex.Message}");
+        }
+
+        return sb.ToString();
+    }
+
     private async void InitAgent_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -477,9 +559,14 @@ Here is the code snippet (with line numbers added for reference):
             "Acknowledge this prompt by saying 'Agent Initialized. Waiting for task.'" : 
             $"USER TASK: {userTask}\nBegin your execution immediately by outputting the first module's JSON.";
 
+        string workspaceContext = await BuildWorkspaceContextAsync(_workspacePath);
+
         string prompt = $@"SYSTEM PROMPT: You are an elite Senior Full Stack Software Engineer with 20+ years of professional experience.
 
 You are acting as an Autonomous AI Agent with full access to the user's workspace at: {_workspacePath}
+
+You have been provided with the complete contents of the workspace below. Use this memory to execute tasks perfectly without needing to individually read files unless necessary.
+{workspaceContext}
 
 {projectScope}
 If your goal requires generating complex binary files like PPTX, DOCX, PDF, or XLSX, you MUST do so by:
@@ -919,14 +1006,14 @@ CRITICAL RULES:
                         case "create_file":
                             BackupFile(targetPath);
                             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(targetPath)!);
-                            File.WriteAllText(targetPath, cmd.Content);
+                            await File.WriteAllTextAsync(targetPath, cmd.Content);
                             results.AppendLine($"- create_file: {cmd.Path} (Success)");
                             LogAgentActivity($"Created file: {cmd.Path}");
                             break;
                         case "read_file":
                             if (File.Exists(targetPath))
                             {
-                                string content = File.ReadAllText(targetPath);
+                                string content = await File.ReadAllTextAsync(targetPath);
                                 string[] fileLines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
                                 for (int i = 0; i < fileLines.Length; i++)
                                 {
@@ -945,7 +1032,7 @@ CRITICAL RULES:
                         case "list_dir":
                             if (Directory.Exists(targetPath))
                             {
-                                var files = Directory.GetFileSystemEntries(targetPath).Select(p => System.IO.Path.GetFileName(p));
+                                var files = await Task.Run(() => Directory.GetFileSystemEntries(targetPath).Select(p => System.IO.Path.GetFileName(p)).ToArray());
                                 results.AppendLine($"- list_dir: {cmd.Path}\n[{string.Join(", ", files)}]");
                                 LogAgentActivity($"Listed directory: {cmd.Path}");
                             }
@@ -958,6 +1045,13 @@ CRITICAL RULES:
                         case "run_command":
                             if (cmd.Content != null)
                             {
+                                Application.Current.Dispatcher.Invoke(() => 
+                                {
+                                    TerminalStatusText.Text = $"Running: {cmd.Content}";
+                                    TerminalStatusPanel.Visibility = Visibility.Visible;
+                                });
+                                LogAgentActivity($"[TERMINAL] Started running: {cmd.Content}");
+
                                 var processInfo = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c " + cmd.Content)
                                 {
                                     CreateNoWindow = true,
@@ -968,24 +1062,36 @@ CRITICAL RULES:
                                 };
                                 using (var proc = System.Diagnostics.Process.Start(processInfo))
                                 {
-                                    proc?.WaitForExit();
-                                    string output = proc?.StandardOutput.ReadToEnd() ?? "";
-                                    string error = proc?.StandardError.ReadToEnd() ?? "";
-                                    results.AppendLine($"- run_command: {cmd.Content} (ExitCode: {proc?.ExitCode})");
-                                    if (!string.IsNullOrWhiteSpace(output)) results.AppendLine($"OUTPUT:\n```\n{output}\n```");
-                                    if (!string.IsNullOrWhiteSpace(error)) results.AppendLine($"ERROR:\n```\n{error}\n```");
-                                    LogAgentActivity($"Ran command: {cmd.Content}");
+                                    if (proc != null)
+                                    {
+                                        var outputTask = proc.StandardOutput.ReadToEndAsync();
+                                        var errorTask = proc.StandardError.ReadToEndAsync();
+                                        await proc.WaitForExitAsync();
+                                        
+                                        string output = await outputTask;
+                                        string error = await errorTask;
+                                        
+                                        results.AppendLine($"- run_command: {cmd.Content} (ExitCode: {proc.ExitCode})");
+                                        if (!string.IsNullOrWhiteSpace(output)) results.AppendLine($"OUTPUT:\n```\n{output}\n```");
+                                        if (!string.IsNullOrWhiteSpace(error)) results.AppendLine($"ERROR:\n```\n{error}\n```");
+                                        LogAgentActivity($"[TERMINAL] Finished with exit code {proc.ExitCode}: {cmd.Content}");
+                                    }
                                 }
+                                
+                                Application.Current.Dispatcher.Invoke(() => 
+                                {
+                                    TerminalStatusPanel.Visibility = Visibility.Collapsed;
+                                });
                             }
                             break;
                         case "edit_file":
                             if (File.Exists(targetPath))
                             {
                                 BackupFile(targetPath);
-                                string originalContent = File.ReadAllText(targetPath);
+                                string originalContent = await File.ReadAllTextAsync(targetPath);
                                 string fakeJson = $@"{{ ""replacements"": [ {{ ""startLine"": {cmd.StartLine}, ""endLine"": {cmd.EndLine}, ""newCode"": {JsonSerializer.Serialize(cmd.NewCode)} }} ] }}";
-                                string newContent = ApplyFixesToSnippet(originalContent, fakeJson);
-                                File.WriteAllText(targetPath, newContent);
+                                string newContent = await Task.Run(() => ApplyFixesToSnippet(originalContent, fakeJson));
+                                await File.WriteAllTextAsync(targetPath, newContent);
                                 results.AppendLine($"- edit_file: {cmd.Path} (Success)");
                                 LogAgentActivity($"Edited file: {cmd.Path}");
                             }
@@ -1054,10 +1160,17 @@ CRITICAL RULES:
                      document.querySelector('textarea');
             if (el) {{
                 el.focus();
-                if (!document.execCommand('insertText', false, {safeText})) {{
-                    if (el.tagName === 'TEXTAREA') el.value = {safeText};
-                    else el.textContent = {safeText};
+                var textToInject = {safeText};
+                if (textToInject.length > 20000) {{
+                    if (el.tagName === 'TEXTAREA') el.value = textToInject;
+                    else el.textContent = textToInject;
                     el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                }} else {{
+                    if (!document.execCommand('insertText', false, textToInject)) {{
+                        if (el.tagName === 'TEXTAREA') el.value = textToInject;
+                        else el.textContent = textToInject;
+                        el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    }}
                 }}
                 setTimeout(() => {{
                     var sendBtn = document.querySelector('button[data-testid=""send-button""]') || 
@@ -1139,6 +1252,38 @@ CRITICAL RULES:
         {
             System.Windows.MessageBox.Show($"Error applying fixes: {ex.Message}");
             return originalSnippet;
+        }
+    }
+
+    private void OpenSettings_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void CloseSettings_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void AllowScreenShareCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateScreenShareAffinity();
+    }
+
+    private void UpdateScreenShareAffinity()
+    {
+        try
+        {
+            IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero)
+            {
+                bool allowShare = AllowScreenShareCheckbox?.IsChecked == true;
+                SetWindowDisplayAffinity(hwnd, allowShare ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to set display affinity: {ex.Message}");
         }
     }
 }
