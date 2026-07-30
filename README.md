@@ -5,6 +5,11 @@ AI Assistant is a powerful desktop application built with WPF and .NET 8 that br
 ## Features
 
 - **Multi-AI Support:** Access popular AI models directly through an integrated WebView2 browser (ChatGPT, Gemini, Claude, DeepSeek, Arena AI, Z.ai).
+- **Autonomous AI Agent Mode:** Fully automated background terminal and filesystem access directly from the chat prompt. The AI can execute multi-step plans, build projects, run scripts, and fix code without manual intervention.
+- **1 Million Token Workspace Context:** Automatically aggregates and ingests up to 1 million tokens of your workspace's file contents into the AI's prompt for perfect codebase memory and precision editing.
+- **Screen Share Privacy:** Built-in settings overlay utilizing Windows Display Affinity layer concepts to completely hide the application window from screen recording software (OBS, Teams, Zoom, etc.).
+- **Agent Execution Status:** Real-time animated status panel indicating when the AI is executing background terminal commands.
+- **Hang-Free Optimization:** Fully asynchronous file I/O and process execution ensures the user interface remains snappy and never freezes during complex agent operations.
 - **Global Hotkeys:** 
   - `Ctrl + Shift + A`: Toggle the AI Assistant window instantly.
   - `Ctrl + Shift + F`: Trigger code fixing or context-aware actions based on your clipboard or screen.
