@@ -1,0 +1,84 @@
+<UserControl x:Class="AIAssistant.Features.BrowserAgent.BrowserAgentControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" Margin="5" Grid.Column="0">
+                <TextBlock Text="Autonomous Web Navigation Enabled" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="Gray" Margin="0,0,10,0"/>
+                <ui:Button Content="📸 Screenshot" Click="BrowserScreenshot_Click" Appearance="Secondary" Margin="0,0,5,0"/>
+                <ui:Button x:Name="RecordBtn" Content="🎥 Record" Click="BrowserRecord_Click" Appearance="Secondary"/>
+            </StackPanel>
+            
+            <ui:Button Grid.Column="1" Content="Browser Settings" Click="Settings_Click" Appearance="Secondary" Margin="5"/>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto" x:Name="SettingsColumn" MaxWidth="0"/>
+            </Grid.ColumnDefinitions>
+            
+            <wv2:WebView2 x:Name="webView" Grid.Column="0" Source="https://chatgpt.com" />
+            
+            <Border Grid.Column="1" Background="#1E1E1E" Padding="10" Margin="5,0,0,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Width="300">
+                        <TextBlock Text="Security &amp; Permissions" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="White"/>
+                        <CheckBox x:Name="AllowBrowserNavCheckbox" Content="Allow AI browser navigation" IsChecked="True" Margin="0,0,0,15" Foreground="White"/>
+
+                        <TextBlock Text="URL Denylist (one per line):" Margin="0,0,0,2" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBox x:Name="UrlDenylistInput" AcceptsReturn="True" Height="60" TextWrapping="Wrap" Text="*.bank.*&#x0a;*.paypal.com" Margin="0,0,0,15" VerticalScrollBarVisibility="Auto" Background="#252526" Foreground="White"/>
+
+                        <TextBlock Text="URL Allowlist (empty = allow all):" Margin="0,0,0,2" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBox x:Name="UrlAllowlistInput" AcceptsReturn="True" Height="60" TextWrapping="Wrap" Margin="0,0,0,15" VerticalScrollBarVisibility="Auto" Background="#252526" Foreground="White"/>
+
+                        <Separator Margin="0,10,0,20"/>
+                        
+                        <TextBlock Text="Secrets Manager (Browser Access)" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="White"/>
+                        <TextBlock Text="Store credentials for the AI to securely log into websites on your behalf." FontSize="11" Foreground="Gray" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                        
+                        <DataGrid x:Name="SecretsDataGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" HeadersVisibility="Column" Background="Transparent" RowBackground="Transparent" MaxHeight="150" Margin="0,0,0,10" Foreground="White">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Domain" Binding="{Binding Domain}" Width="100" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="100" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Password" Binding="{Binding HiddenPassword}" Width="*" IsReadOnly="True" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBox x:Name="SecretDomainInput" Grid.Column="0" PlaceholderText="Domain (e.g. github.com)" Margin="0,0,5,0" Background="#252526" Foreground="White"/>
+                            <ui:TextBox x:Name="SecretUserInput" Grid.Column="1" PlaceholderText="Username" Margin="5,0,0,0" Background="#252526" Foreground="White"/>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <PasswordBox x:Name="SecretPassInput" Grid.Column="0" Margin="0,0,10,0" Background="#252526" Foreground="White"/>
+                            <ui:Button Grid.Column="1" Content="Add Secret" Click="AddSecret_Click" Appearance="Primary"/>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

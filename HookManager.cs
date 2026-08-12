@@ -204,7 +204,7 @@ public class HookManager
     }
 
     // --- Workspace Config ---
-    private void LoadRecentWorkspaces()
+    public void LoadRecentWorkspaces()
     {
         try
         {

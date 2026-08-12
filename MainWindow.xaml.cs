@@ -1,3 +1,4 @@
+using AIAssistant.Core;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -32,14 +33,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private string _lastCopiedCode = string.Empty;
 
     private string _workspacePath = string.Empty;
-    private bool _isAutoLoopActive = false;
-    private int _autonomousStepCount = 0;
-    private int _consecutiveErrors = 0;
+    private volatile bool _isAutoLoopActive = false;
+    private volatile int _autonomousStepCount = 0;
+    private volatile int _consecutiveErrors = 0;
+    private readonly object _commandsLock = new object();
     private List<string> _recentCommands = new List<string>();
     private const int MaxAutonomousSteps = int.MaxValue;
-    private SpeechSynthesizer? _synthesizer;
+    private readonly SemaphoreSlim _agentProcessLock = new SemaphoreSlim(1, 1);
     
     private System.Collections.ObjectModel.ObservableCollection<PendingChange> _pendingChanges = new();
+
+    // Voice controls are now in VoiceAssistantControl (dynamic fields removed)
+
 
     // --- New Managers ---
     private readonly GitManager _gitManager = new();
@@ -60,6 +65,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     public MainWindow()
     {
         InitializeComponent();
+
+        // Subscribe to BrowserAgent after Loaded to ensure XAML controls are initialized
+        this.Loaded += (s, ev) =>
+        {
+            if (AppServices.Instance.BrowserAgent != null)
+            {
+                AppServices.Instance.BrowserAgent.MessageReceived += OnBrowserAgentMessageReceived;
+            }
+        };
         
         try 
         {
@@ -107,9 +121,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _clipboardMonitor.ClipboardChanged += ClipboardMonitor_ClipboardChanged;
             _clipboardMonitor.Start(this);
 
-            await webView.EnsureCoreWebView2Async(null);
-            webView.WebMessageReceived += WebView_WebMessageReceived;
-            webView.NavigationCompleted += WebView_NavigationCompleted;
+            // await webView.EnsureCoreWebView2Async(null);
+            // webView.WebMessageReceived += WebView_WebMessageReceived;
+            // webView.NavigationCompleted += WebView_NavigationCompleted;
 
             StartIdeTerminal();
             PopulateFileExplorer(_workspacePath);
@@ -246,10 +260,7 @@ class AutonomousAgent:
 ";
             File.WriteAllText(agentScriptPath, agentPythonCode.Trim());
 
-            if (EnableVoiceModeCheckbox.IsChecked == true || VoiceModeMainToggle.IsChecked == true)
-            {
-                StartBackgroundListener();
-            }
+            // Voice mode auto-start is handled by VoiceAssistantControl
         }
         catch (Exception ex)
         {
@@ -262,7 +273,7 @@ class AutonomousAgent:
         if (e.Source == MainTabControl && CodeEditorColumn != null)
         {
             // Tab 4 is Code Editor (IDE)
-            if (MainTabControl.SelectedIndex == 4)
+            if (MainTabControl.SelectedIndex == 3) // Code Editor is now index 3
             {
                 CodeEditorColumn.Width = new GridLength(1, GridUnitType.Star);
                 CodeEditorSplitterColumn.Width = new GridLength(5);
@@ -273,21 +284,36 @@ class AutonomousAgent:
                 CodeEditorSplitterColumn.Width = new GridLength(0);
             }
 
-            // Voice Agent Restriction
-            if (MainTabControl.SelectedIndex == 1)
-            {
-                if (EnableVoiceModeCheckbox != null && EnableVoiceModeCheckbox.IsChecked == true && !_isListeningBackground)
-                {
-                    StartBackgroundListener();
-                }
-            }
-            else
-            {
-                if (_isListeningBackground)
-                {
-                    StopBackgroundListener();
-                }
-            }
+            // Voice Agent Restriction handled by VoiceAssistantControl
+        }
+    }
+
+
+    private void AiSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (BrowserAgentFeature == null || AiSelector == null) return;
+        
+        if (AiSelector.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Content != null)
+        {
+            string selectedAi = item.Content.ToString()!;
+            string url = "https://chatgpt.com"; // default
+            
+            if (selectedAi.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+                url = "https://gemini.google.com/app";
+            else if (selectedAi.Equals("Claude", StringComparison.OrdinalIgnoreCase))
+                url = "https://claude.ai";
+            else if (selectedAi.Equals("DeepSeek", StringComparison.OrdinalIgnoreCase))
+                url = "https://chat.deepseek.com";
+            else if (selectedAi.Equals("Arena AI", StringComparison.OrdinalIgnoreCase))
+                url = "https://arena.ai/";
+            else if (selectedAi.Equals("Z.ai", StringComparison.OrdinalIgnoreCase))
+                url = "https://z.ai"; // example
+            else if (selectedAi.Equals("GPT Chatly", StringComparison.OrdinalIgnoreCase))
+                url = "https://gptchatly.com";
+            else if (selectedAi.Equals("Opus Chatly", StringComparison.OrdinalIgnoreCase))
+                url = "https://opus.gptchatly.com/";
+                
+            BrowserAgentFeature.Navigate(url);
         }
     }
 
@@ -361,40 +387,7 @@ class AutonomousAgent:
         }
     }
 
-    private void AiSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (webView == null || AiSelector == null) return;
-        
-        string? selectedAi = (AiSelector.SelectedItem as ComboBoxItem)?.Content?.ToString();
-        
-        string newUrl = "https://chatgpt.com";
-        switch (selectedAi)
-        {
-            case "ChatGPT":
-                newUrl = "https://chatgpt.com";
-                break;
-            case "Gemini":
-                newUrl = "https://gemini.google.com";
-                break;
-            case "Claude":
-                newUrl = "https://claude.ai";
-                break;
-            case "Arena AI":
-                newUrl = "https://arena.ai/";
-                break;
-            case "DeepSeek":
-                newUrl = "https://chat.deepseek.com";
-                break;
-            case "Z.ai":
-                newUrl = "https://z.ai";
-                break;
-        }
-        
-        if (webView.Source?.ToString() != newUrl)
-        {
-            webView.Source = new Uri(newUrl);
-        }
-    }
+    
 
     private async void ClipboardMonitor_ClipboardChanged(object? sender, EventArgs e)
     {
@@ -541,7 +534,8 @@ Here is the code snippet (with line numbers added for reference):
             }}
         ";
         
-        await webView.ExecuteScriptAsync(js);
+        var browser = AppServices.Instance.BrowserAgent;
+        if (browser != null) await browser.ExecuteScriptAsync(js);
         e.Handled = true;
         }
         catch (Exception ex)
@@ -550,138 +544,12 @@ Here is the code snippet (with line numbers added for reference):
         }
     }
 
-    private void AutoFix_Click(object sender, RoutedEventArgs e)
-    {
-        // Manual trigger for auto fix from UI if needed
-        System.Windows.MessageBox.Show("To auto-fix code, highlight the code in your IDE and press Ctrl+Shift+F.");
-    }
+    // AutoFix_Click extracted
 
-    private async void InsertResponse_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-        if (_previousWindow == IntPtr.Zero)
-        {
-            System.Windows.MessageBox.Show("No target window found. Please invoke the app via the hotkey (Ctrl+Shift+A) from another window.");
-            return;
-        }
+    // InsertResponse_Click extracted
 
-        string textToInsert = await webView.ExecuteScriptAsync("window.getSelection().toString();");
-        
-        // Remove JS quotes
-        textToInsert = System.Text.Json.JsonSerializer.Deserialize<string>(textToInsert) ?? "";
+    // ScreenCapture_Click extracted
 
-        if (string.IsNullOrWhiteSpace(textToInsert))
-        {
-            // If no text is selected, try to get the last code block
-            string jsGetLastCodeBlock = @"
-                (function() {
-                    var codeBlocks = document.querySelectorAll('pre code');
-                    if (codeBlocks.length > 0) {
-                        return codeBlocks[codeBlocks.length - 1].innerText;
-                    }
-                    return '';
-                })();
-            ";
-            string lastCodeBlock = await webView.ExecuteScriptAsync(jsGetLastCodeBlock);
-            lastCodeBlock = System.Text.Json.JsonSerializer.Deserialize<string>(lastCodeBlock) ?? "";
-            
-            if (!string.IsNullOrWhiteSpace(lastCodeBlock))
-            {
-                textToInsert = lastCodeBlock;
-            }
-            else
-            {
-                System.Windows.MessageBox.Show("Please select some text in the AI chat first, or ensure the AI has provided a code block.");
-                return;
-            }
-        }
-
-        string jsonContent = string.Empty;
-        var match = Regex.Match(textToInsert, @"```json\s*(\{.*?\})\s*```", RegexOptions.Singleline);
-        if (match.Success)
-        {
-            jsonContent = match.Groups[1].Value;
-        }
-        else
-        {
-            // Try to extract just the JSON object if backticks are missing
-            var fallbackMatch = Regex.Match(textToInsert, @"\{[\s\S]*\}", RegexOptions.Singleline);
-            if (fallbackMatch.Success && fallbackMatch.Value.Contains("\"replacements\""))
-            {
-                jsonContent = fallbackMatch.Value;
-            }
-        }
-
-        this.Hide();
-
-        if (!string.IsNullOrWhiteSpace(jsonContent) && !string.IsNullOrWhiteSpace(_lastCopiedCode))
-        {
-            // Auto-apply fixes in-memory to the snippet
-            string patchedSnippet = ApplyFixesToSnippet(_lastCopiedCode, jsonContent);
-            await WindowAutomation.PasteTextIntoWindowAsync(_previousWindow, patchedSnippet);
-        }
-        else
-        {
-            // Fallback: paste the raw text exactly
-            await WindowAutomation.PasteTextIntoWindowAsync(_previousWindow, textToInsert);
-        }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"InsertResponse_Click error: {ex.Message}");
-        }
-    }
-
-    private async void ScreenCapture_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var captureWindow = new ScreenCaptureWindow();
-            if (captureWindow.ShowDialog() == true && captureWindow.CapturedImage != null)
-            {
-                string extractedText = await OcrHelper.ExtractTextAsync(captureWindow.CapturedImage);
-                
-                if (!string.IsNullOrWhiteSpace(extractedText))
-                {
-                    // Escape for JS
-                    string safeText = System.Text.Json.JsonSerializer.Serialize(extractedText);
-                    
-                    // Try to inject into ChatGPT's textarea
-                    // Try to inject into the text box
-                    string js = $@"
-                        var safeText = {safeText};
-                        var el = document.getElementById('prompt-textarea') || 
-                                 document.querySelector('div[contenteditable=""true""]') || 
-                                 document.querySelector('textarea');
-                        if (el) {{
-                            el.focus();
-                            if (!document.execCommand('insertText', false, safeText)) {{
-                                if (el.tagName === 'TEXTAREA') {{
-                                    el.value = safeText;
-                                }} else {{
-                                    el.textContent = safeText;
-                                }}
-                                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            }}
-                        }}
-                    ";
-                    await webView.ExecuteScriptAsync(js);
-                    
-                    // Also copy to clipboard for convenience
-                    System.Windows.Clipboard.SetText(extractedText);
-                }
-                else
-                {
-                    System.Windows.MessageBox.Show("No text could be extracted from the image.");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"ScreenCapture_Click error: {ex.Message}");
-        }
-    }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
@@ -701,53 +569,81 @@ Here is the code snippet (with line numbers added for reference):
         };
         if (dialog.ShowDialog() == true)
         {
-            _workspacePath = dialog.FolderName;
-            WorkspaceText.Text = System.IO.Path.GetFileName(_workspacePath);
-            PopulateFileExplorer(_workspacePath);
-            
-            // Change directory for all active terminals
-            foreach (var term in _terminals.Values)
-            {
-                term.Writer.WriteLine($"cd /d \"{_workspacePath}\"");
-            }
-
-            // Initialize managers
-            _gitManager.SetWorkspace(_workspacePath);
-            _artifactManager.SetWorkspace(_workspacePath);
-            _hookManager.SetWorkspace(_workspacePath);
-
-            // Refresh Git panel
-            if (_gitManager.IsGitRepo)
-            {
-                await _gitManager.RefreshStatusAsync();
-                GitBranchText.Text = _gitManager.CurrentBranch;
-            }
-
-            // Check for interrupted tasks
-            var savedState = _artifactManager.LoadAgentState(_workspacePath);
-            if (savedState.HasValue)
-            {
-                var result = MessageBox.Show(
-                    $"Found an interrupted task:\n\"{savedState.Value.task}\"\n\nWould you like to resume it?",
-                    "Resume Task", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (result == MessageBoxResult.Yes)
-                {
-                    UserPromptText.Text = $"RESUME INTERRUPTED TASK: {savedState.Value.task}\nContinue from step {savedState.Value.stepIndex + 1}.";
-                    AutoLoopToggle.IsChecked = true;
-                    _isAutoLoopActive = true;
-                    InitAgent_Click(this, new RoutedEventArgs());
-                }
-                else
-                {
-                    _artifactManager.ClearAgentState(_workspacePath);
-                }
-            }
-
-            // Build repo index
-            LogAgentActivity("Indexing repository...");
-            await _artifactManager.BuildRepoIndexAsync(_workspacePath);
-            LogAgentActivity("Repository indexed successfully.");
+            await LoadWorkspaceAsync(dialog.FolderName);
         }
+    }
+
+    private async Task LoadWorkspaceAsync(string folderPath)
+    {
+        _workspacePath = folderPath;
+        // WorkspaceText updated via event
+        PopulateFileExplorer(_workspacePath);
+        
+        // Change directory for all active terminals
+        foreach (var term in _terminals.Values)
+        {
+            term.Writer.WriteLine($"cd /d \"{_workspacePath}\"");
+        }
+
+        // Initialize managers
+        _gitManager.SetWorkspace(_workspacePath);
+        _artifactManager.SetWorkspace(_workspacePath);
+        _hookManager.SetWorkspace(_workspacePath);
+
+        AIAssistant.Core.AppServices.Instance.SetWorkspace(_workspacePath);
+
+        // Refresh Git panel
+        if (_gitManager.IsGitRepo)
+        {
+            await _gitManager.RefreshStatusAsync();
+            GitBranchText.Text = _gitManager.CurrentBranch;
+        }
+
+        // Check for interrupted tasks
+        var savedState = _artifactManager.LoadAgentState(_workspacePath);
+        if (savedState.HasValue)
+        {
+            var result = MessageBox.Show(
+                $"Found an interrupted task:\n\"{savedState.Value.task}\"\n\nWould you like to resume it?",
+                "Resume Task", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+            {
+                UserPromptText.Text = $"RESUME INTERRUPTED TASK: {savedState.Value.task}\nContinue from step {savedState.Value.stepIndex + 1}.";
+                AutoLoopToggle.IsChecked = true;
+                _isAutoLoopActive = true;
+                InitAgent_Click(this, new RoutedEventArgs());
+            }
+            else
+            {
+                _artifactManager.ClearAgentState(_workspacePath);
+            }
+        }
+
+        // Build repo index
+        LogAgentActivity("Indexing repository...");
+        await _artifactManager.BuildRepoIndexAsync(_workspacePath);
+        LogAgentActivity("Repository indexed successfully.");
+
+        UpdateRecentWorkspacesUI();
+    }
+
+    private void RecentWorkspacesCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (RecentWorkspacesCombo.SelectedItem is string path && !string.IsNullOrEmpty(path))
+        {
+            _ = LoadWorkspaceAsync(path);
+        }
+    }
+
+    private void UpdateRecentWorkspacesUI()
+    {
+        RecentWorkspacesCombo.SelectionChanged -= RecentWorkspacesCombo_SelectionChanged;
+        RecentWorkspacesCombo.ItemsSource = System.Linq.Enumerable.ToList(System.Linq.Enumerable.Select(_hookManager.RecentWorkspaces, w => w.Path));
+        if (_hookManager.RecentWorkspaces.Count > 0)
+        {
+            RecentWorkspacesCombo.SelectedItem = _workspacePath;
+        }
+        RecentWorkspacesCombo.SelectionChanged += RecentWorkspacesCombo_SelectionChanged;
     }
 
     private void AutoLoopToggle_Checked(object sender, RoutedEventArgs e)
@@ -760,32 +656,7 @@ Here is the code snippet (with line numbers added for reference):
         _isAutoLoopActive = false;
     }
 
-    private void CanvasSelector_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (FormatSelector == null) return;
-        FormatSelector.Items.Clear();
-        int index = CanvasSelector.SelectedIndex;
-        if (index == 0) // Code Project
-        {
-            FormatSelector.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Any" });
-        }
-        else if (index == 1) // Document
-        {
-            FormatSelector.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "DOCX" });
-            FormatSelector.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "PDF" });
-            FormatSelector.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "TXT" });
-        }
-        else if (index == 2) // Presentation
-        {
-            FormatSelector.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "PPTX" });
-        }
-        else if (index == 3) // Spreadsheet
-        {
-            FormatSelector.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "XLSX" });
-            FormatSelector.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "CSV" });
-        }
-        FormatSelector.SelectedIndex = 0;
-    }
+    // CanvasSelector_SelectionChanged extracted to WorkspaceAgentControl
 
     private async Task<string> BuildWorkspaceContextAsync(string workspacePath)
     {
@@ -872,15 +743,15 @@ Here is the code snippet (with line numbers added for reference):
             {
                 Directory.CreateDirectory(_workspacePath);
             }
-            Application.Current.Dispatcher.Invoke(() => WorkspaceText.Text = "Temp Workspace");
+            // WorkspaceText updated via event
         }
 
         _autonomousStepCount = 0;
         _consecutiveErrors = 0;
-        _recentCommands.Clear();
+        lock (_commandsLock) { _recentCommands.Clear(); }
 
-        string canvasType = ((System.Windows.Controls.ComboBoxItem)CanvasSelector.SelectedItem).Content?.ToString() ?? "Code Project";
-        string formatType = ((System.Windows.Controls.ComboBoxItem)FormatSelector.SelectedItem).Content?.ToString() ?? "Any";
+        string canvasType = WorkspaceAgentFeature?.CanvasType ?? "Code Project";
+        string formatType = WorkspaceAgentFeature?.FormatType ?? "Any";
 
         string projectScope = $"Your objective is to produce a {canvasType}.";
         if (formatType != "Any") projectScope += $" The final output MUST include a {formatType} file.";
@@ -1027,7 +898,7 @@ CRITICAL RULES:
 USER TASK: {userTask}
 Begin your execution immediately by outputting the JSON.";
         }
-        else if (selectedTabIndex == 1 || EnableVoiceModeCheckbox.IsChecked == true) // Voice Assistant
+        else if (selectedTabIndex == 1) // Voice Assistant
         {
             prompt = $@"SYSTEM PROMPT: You are a warm, highly conversational, and human-like voice assistant (similar to Siri or Google Assistant).
 First, ANALYZE the user's command. Then, choose the best tool to perform the task perfectly.
@@ -1130,207 +1001,26 @@ CRITICAL RULES:
 
     private void VoiceModeMainToggle_Checked(object sender, RoutedEventArgs e)
     {
-        EnableVoiceModeCheckbox.IsChecked = true;
-        StartBackgroundListener();
+        // Voice mode is handled by VoiceAssistantControl
     }
 
     private void VoiceModeMainToggle_Unchecked(object sender, RoutedEventArgs e)
     {
-        EnableVoiceModeCheckbox.IsChecked = false;
-        StopBackgroundListener();
+        // Voice mode is handled by VoiceAssistantControl
     }
 
     private void StartBackgroundListener()
     {
-        if (_isListeningBackground) return;
-        _isListeningBackground = true;
-        _voiceCts = new CancellationTokenSource();
-        Task.Run(() => BackgroundListenLoop(_voiceCts.Token));
+        // Voice listening is now handled by VoiceAssistantControl
+        // This is a no-op stub to prevent compile errors from legacy callers
     }
 
     private void StopBackgroundListener()
     {
-        _isListeningBackground = false;
-        _voiceCts?.Cancel();
+        // Voice listening is now handled by VoiceAssistantControl
     }
 
-    private async Task BackgroundListenLoop(CancellationToken token)
-    {
-        while (!token.IsCancellationRequested)
-        {
-            try
-            {
-                Application.Current.Dispatcher.Invoke(() => 
-                {
-                    VoiceCommandBtn.Content = "🎙 Background Listening...";
-                    VoiceCommandBtn.IsEnabled = false;
-                });
 
-                string selectedLang = "en-US";
-                string micArg = "";
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    selectedLang = ((System.Windows.Controls.ComboBoxItem)LanguageSelector.SelectedItem).Content?.ToString() ?? "en-US";
-                    if (MicSelector.SelectedItem is System.Windows.Controls.ComboBoxItem selectedMic && selectedMic.Tag != null)
-                    {
-                        micArg = $" --mic-index={selectedMic.Tag}";
-                    }
-                });
-
-                string wakeWordArg = " \"--wake-word=hey maya,hey google,hey siri,hey alexa\"";
-                string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "voice_capture.py");
-                if (!File.Exists(scriptPath)) 
-                    scriptPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "voice_capture.py");
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "python",
-                    Arguments = $"\"{scriptPath}\" --lang={selectedLang}{micArg}{wakeWordArg}",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    StandardOutputEncoding = System.Text.Encoding.UTF8,
-                    StandardErrorEncoding = System.Text.Encoding.UTF8,
-                    CreateNoWindow = true
-                };
-
-                using var process = Process.Start(startInfo);
-                if (process != null)
-                {
-                    using var reg = token.Register(() => { try { process.Kill(); } catch { } });
-                    var outTask = process.StandardOutput.ReadToEndAsync();
-                    await process.WaitForExitAsync();
-                    
-                    if (token.IsCancellationRequested) break;
-
-                    string output = (await outTask).Trim();
-                    
-                    if (!string.IsNullOrWhiteSpace(output) && !output.StartsWith("ERROR:"))
-                    {
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            UserPromptText.Text = output;
-                            AutoLoopToggle.IsChecked = true;
-                            _isAutoLoopActive = true;
-                            InitAgent_Click(this, new RoutedEventArgs());
-                        });
-
-                        // Wait for agent to finish before restarting listening loop.
-                        await Task.Delay(2000, token);
-                        while (_isAutoLoopActive && !token.IsCancellationRequested)
-                        {
-                            await Task.Delay(1000, token);
-                        }
-                        
-                        // Small delay after finishing speaking before opening mic again
-                        await Task.Delay(1000, token);
-                    }
-                }
-            }
-            catch
-            {
-                await Task.Delay(2000, token);
-            }
-        }
-
-        Application.Current.Dispatcher.Invoke(() => 
-        {
-            VoiceCommandBtn.Content = "🎤 Voice";
-            VoiceCommandBtn.IsEnabled = true;
-        });
-    }
-
-    private async void VoiceCommand_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            VoiceCommandBtn.Content = "🎙 Listening...";
-            VoiceCommandBtn.IsEnabled = false;
-
-            // Temporarily stop background listener to free the mic
-            bool wasBackgroundRunning = _isListeningBackground;
-            if (wasBackgroundRunning)
-            {
-                StopBackgroundListener();
-                await Task.Delay(500); // give it a moment to release mic
-            }
-
-            string selectedLang = ((System.Windows.Controls.ComboBoxItem)LanguageSelector.SelectedItem).Content?.ToString() ?? "en-US";
-            
-            string micArg = "";
-            if (MicSelector.SelectedItem is System.Windows.Controls.ComboBoxItem selectedMic && selectedMic.Tag != null)
-            {
-                micArg = $" --mic-index={selectedMic.Tag}";
-            }
-
-            // No wake word here, this is an immediate capture (either manual click or ask_question)
-            string wakeWordArg = "";
-
-            string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "voice_capture.py");
-            
-            // In case it's in the scratch folder during dev
-            if (!File.Exists(scriptPath)) 
-            {
-                scriptPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "voice_capture.py");
-            }
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "python",
-                Arguments = $"\"{scriptPath}\" --lang={selectedLang}{micArg}{wakeWordArg}",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = System.Text.Encoding.UTF8,
-                StandardErrorEncoding = System.Text.Encoding.UTF8,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process != null)
-            {
-                var outTask = process.StandardOutput.ReadToEndAsync();
-                var errTask = process.StandardError.ReadToEndAsync();
-                await Task.WhenAll(outTask, errTask, process.WaitForExitAsync());
-                
-                string output = outTask.Result.Trim();
-                string error = errTask.Result.Trim();
-                
-                if (output.StartsWith("ERROR:"))
-                {
-                    if (!output.Contains("Could not understand audio") && !output.Contains("timeout (no speech detected)"))
-                    {
-                        System.Windows.MessageBox.Show(output, "Voice Recognition Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                }
-                else if (!string.IsNullOrWhiteSpace(output))
-                {
-                    UserPromptText.Text = output;
-                    if (wasBackgroundRunning) AutoLoopToggle.IsChecked = true;
-                    // Automatically trigger the agent
-                    InitAgent_Click(this, new RoutedEventArgs());
-                }
-                else if (!string.IsNullOrWhiteSpace(error))
-                {
-                    System.Windows.MessageBox.Show(error, "Python Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            }
-
-            if (wasBackgroundRunning)
-            {
-                StartBackgroundListener();
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Windows.MessageBox.Show($"Voice Command failed: {ex.Message}");
-        }
-        finally
-        {
-            VoiceCommandBtn.Content = "🎤 Voice";
-            VoiceCommandBtn.IsEnabled = true;
-        }
-    }
 
     private async void ForceExecution_Click(object sender, RoutedEventArgs e)
     {
@@ -1352,7 +1042,8 @@ CRITICAL RULES:
                     }
                 })();
             ";
-            await webView.ExecuteScriptAsync(js);
+            var browser = AppServices.Instance.BrowserAgent;
+        if (browser != null) await browser.ExecuteScriptAsync(js);
         }
         catch (Exception ex)
         {
@@ -1560,7 +1251,8 @@ CRITICAL RULES:
                 setInterval(checkAndExtract, 2000);
             })();
         ";
-        await webView.ExecuteScriptAsync(js);
+        var browser = AppServices.Instance.BrowserAgent;
+        if (browser != null) await browser.ExecuteScriptAsync(js);
         }
         catch (Exception ex)
         {
@@ -1568,11 +1260,10 @@ CRITICAL RULES:
         }
     }
 
-    private async void WebView_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
+    private async void OnBrowserAgentMessageReceived(object? sender, string message)
     {
         try
         {
-            string message = e.TryGetWebMessageAsString();
             if (string.IsNullOrWhiteSpace(message)) return;
 
             if (message.StartsWith("LOG:"))
@@ -1608,6 +1299,13 @@ CRITICAL RULES:
 
     private async Task ProcessAgentCommandAsync(string textToInsert)
     {
+        if (!await _agentProcessLock.WaitAsync(0)) 
+        {
+            LogAgentActivity("Agent command processing already in progress. Skipping duplicate.");
+            return;
+        }
+        try
+        {
         LogAgentActivity($"--- Message Received ({textToInsert.Length} chars) ---");
         
         string jsonContent = string.Empty;
@@ -1648,22 +1346,30 @@ CRITICAL RULES:
         if (string.IsNullOrWhiteSpace(jsonContent)) return;
 
         string hash = GetHash(jsonContent);
-        if (_recentCommands.Count > 0 && _recentCommands.Last() == hash)
+        bool isStuck = false;
+        lock (_commandsLock)
         {
-            _consecutiveErrors++;
-            if (_consecutiveErrors >= 3)
+            if (_recentCommands.Count > 0 && _recentCommands.Last() == hash)
             {
-                LogAgentActivity("STUCK DETECTED. Sending warning to chat.");
-                await InjectToChat("SYSTEM ERROR: You are stuck in a loop repeating the same exact JSON command 3 times. Please pause, re-evaluate, and change your strategy.");
+                _consecutiveErrors++;
+                if (_consecutiveErrors >= 3)
+                {
+                    isStuck = true;
+                    _consecutiveErrors = 0;
+                }
+            }
+            else
+            {
                 _consecutiveErrors = 0;
-                return;
+                _recentCommands.Add(hash);
+                if (_recentCommands.Count > 5) _recentCommands.RemoveAt(0);
             }
         }
-        else
+        if (isStuck)
         {
-            _consecutiveErrors = 0;
-            _recentCommands.Add(hash);
-            if (_recentCommands.Count > 5) _recentCommands.RemoveAt(0);
+            LogAgentActivity("STUCK DETECTED. Sending warning to chat.");
+            await InjectToChat("SYSTEM ERROR: You are stuck in a loop repeating the same exact JSON command 3 times. Please pause, re-evaluate, and change your strategy.");
+            return;
         }
 
         _autonomousStepCount++;
@@ -1700,7 +1406,7 @@ CRITICAL RULES:
                     results.AppendLine($"- task_complete: {cmd.Message}");
                     LogAgentActivity($"TASK COMPLETE: {cmd.Message}");
                     string msg = cmd.Message ?? "Task complete";
-                    if (spokenInThisBlock.Add(msg)) SpeakAloud(msg);
+                    if (spokenInThisBlock.Add(msg)) VoiceAssistantFeature.SpeakAloud(msg);
                     Application.Current.Dispatcher.Invoke(() => AutoLoopToggle.IsChecked = false);
                     break;
                 }
@@ -1718,11 +1424,8 @@ CRITICAL RULES:
                     // otherwise the mic will hear the AI's own TTS voice!
                     Task.Run(() => 
                     {
-                        if (spokenInThisBlock.Add(questionText)) SpeakAloudSync(questionText);
-                        Application.Current.Dispatcher.Invoke(() => 
-                        {
-                            VoiceCommand_Click(VoiceCommandBtn, new RoutedEventArgs());
-                        });
+                        if (spokenInThisBlock.Add(questionText)) VoiceAssistantFeature.SpeakAloudSync(questionText);
+                        // Voice command click moved to VoiceAssistantControl
                     });
                     break;
                 }
@@ -1731,7 +1434,7 @@ CRITICAL RULES:
                     results.AppendLine($"- speak: {cmd.Message}");
                     LogAgentActivity($"SPEAK: {cmd.Message}");
                     string msg = cmd.Message ?? "";
-                    if (spokenInThisBlock.Add(msg)) SpeakAloud(msg);
+                    if (spokenInThisBlock.Add(msg)) VoiceAssistantFeature.SpeakAloud(msg);
                     continue;
                 }
 
@@ -1755,31 +1458,58 @@ CRITICAL RULES:
                             LogAgentActivity($"Created folder: {cmd.Path}");
                             break;
                         case "create_file":
-                            Application.Current.Dispatcher.Invoke(() => {
-                                _pendingChanges.Add(new PendingChange {
-                                    Action = "create",
-                                    FilePath = targetPath,
-                                    OriginalContent = "",
-                                    NewContent = cmd.Content ?? ""
+                            bool autoAcceptCreate = false;
+                            Application.Current.Dispatcher.Invoke(() => autoAcceptCreate = AutoAcceptToggle.IsChecked == true);
+                            
+                            if (autoAcceptCreate)
+                            {
+                                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(targetPath)!);
+                                File.WriteAllText(targetPath, cmd.Content ?? "");
+                                Application.Current.Dispatcher.Invoke(() => PopulateFileExplorer(_workspacePath));
+                                results.AppendLine($"- create_file: {cmd.Path} (Auto-Accepted and saved)");
+                                LogAgentActivity($"Auto-Accepted file creation: {cmd.Path}");
+                            }
+                            else
+                            {
+                                Application.Current.Dispatcher.Invoke(() => {
+                                    _pendingChanges.Add(new PendingChange {
+                                        Action = "create",
+                                        FilePath = targetPath,
+                                        OriginalContent = "",
+                                        NewContent = cmd.Content ?? ""
+                                    });
                                 });
-                            });
-                            results.AppendLine($"- create_file: {cmd.Path} (Staged for user approval)");
-                            LogAgentActivity($"Staged file creation: {cmd.Path}");
+                                results.AppendLine($"- create_file: {cmd.Path} (Staged for user approval)");
+                                LogAgentActivity($"Staged file creation: {cmd.Path}");
+                            }
                             break;
                         case "delete_file":
                             if (File.Exists(targetPath))
                             {
-                                string originalContent = await File.ReadAllTextAsync(targetPath);
-                                Application.Current.Dispatcher.Invoke(() => {
-                                    _pendingChanges.Add(new PendingChange {
-                                        Action = "delete",
-                                        FilePath = targetPath,
-                                        OriginalContent = originalContent,
-                                        NewContent = ""
+                                bool autoAcceptDelete = false;
+                                Application.Current.Dispatcher.Invoke(() => autoAcceptDelete = AutoAcceptToggle.IsChecked == true);
+                                
+                                if (autoAcceptDelete)
+                                {
+                                    File.Delete(targetPath);
+                                    Application.Current.Dispatcher.Invoke(() => PopulateFileExplorer(_workspacePath));
+                                    results.AppendLine($"- delete_file: {cmd.Path} (Auto-Accepted and deleted)");
+                                    LogAgentActivity($"Auto-Accepted file deletion: {cmd.Path}");
+                                }
+                                else
+                                {
+                                    string originalContent = await File.ReadAllTextAsync(targetPath);
+                                    Application.Current.Dispatcher.Invoke(() => {
+                                        _pendingChanges.Add(new PendingChange {
+                                            Action = "delete",
+                                            FilePath = targetPath,
+                                            OriginalContent = originalContent,
+                                            NewContent = ""
+                                        });
                                     });
-                                });
-                                results.AppendLine($"- delete_file: {cmd.Path} (Staged for user approval)");
-                                LogAgentActivity($"Staged file deletion: {cmd.Path}");
+                                    results.AppendLine($"- delete_file: {cmd.Path} (Staged for user approval)");
+                                    LogAgentActivity($"Staged file deletion: {cmd.Path}");
+                                }
                             }
                             else
                             {
@@ -1895,17 +1625,29 @@ CRITICAL RULES:
                                 string fakeJson = $@"{{ ""replacements"": [ {{ ""startLine"": {cmd.StartLine}, ""endLine"": {cmd.EndLine}, ""newCode"": {JsonSerializer.Serialize(cmd.NewCode)} }} ] }}";
                                 string newContent = await Task.Run(() => ApplyFixesToSnippet(originalContent, fakeJson));
                                 
-                                Application.Current.Dispatcher.Invoke(() => {
-                                    _pendingChanges.Add(new PendingChange {
-                                        Action = "edit",
-                                        FilePath = targetPath,
-                                        OriginalContent = originalContent,
-                                        NewContent = newContent
+                                bool autoAcceptEdit = false;
+                                Application.Current.Dispatcher.Invoke(() => autoAcceptEdit = AutoAcceptToggle.IsChecked == true);
+                                
+                                if (autoAcceptEdit)
+                                {
+                                    File.WriteAllText(targetPath, newContent);
+                                    results.AppendLine($"- edit_file: {cmd.Path} (Auto-Accepted and saved)");
+                                    LogAgentActivity($"Auto-Accepted file edit: {cmd.Path}");
+                                }
+                                else
+                                {
+                                    Application.Current.Dispatcher.Invoke(() => {
+                                        _pendingChanges.Add(new PendingChange {
+                                            Action = "edit",
+                                            FilePath = targetPath,
+                                            OriginalContent = originalContent,
+                                            NewContent = newContent
+                                        });
                                     });
-                                });
 
-                                results.AppendLine($"- edit_file: {cmd.Path} (Staged for user approval)");
-                                LogAgentActivity($"Staged file edit: {cmd.Path}");
+                                    results.AppendLine($"- edit_file: {cmd.Path} (Staged for user approval)");
+                                    LogAgentActivity($"Staged file edit: {cmd.Path}");
+                                }
                             }
                             else
                             {
@@ -1943,6 +1685,11 @@ CRITICAL RULES:
         {
             LogAgentActivity($"JSON PARSE ERROR: {ex.Message}");
             await InjectToChat($"SYSTEM ERROR parsing JSON: {ex.Message}");
+        }
+        }
+        finally
+        {
+            _agentProcessLock.Release();
         }
     }
 
@@ -2007,7 +1754,8 @@ CRITICAL RULES:
                 }}, 100);
             }}
         ";
-        await webView.ExecuteScriptAsync(js);
+        var browser = AppServices.Instance.BrowserAgent;
+        if (browser != null) await browser.ExecuteScriptAsync(js);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -2080,128 +1828,7 @@ CRITICAL RULES:
         await PopulateSettingsAsync();
     }
 
-    private void SpeakAloud(string text)
-    {
-        if (EnableTTSCheckbox.IsChecked != true) return;
 
-        Application.Current.Dispatcher.Invoke(() =>
-        {
-            string engine = "Windows";
-            string lang = "en-US";
-            
-            if (TTSEngineSelector.SelectedItem is System.Windows.Controls.ComboBoxItem engineItem && engineItem.Tag is string eTag)
-                engine = eTag;
-                
-            if (LanguageSelector.SelectedItem is System.Windows.Controls.ComboBoxItem langItem && langItem.Tag is string lTag)
-                lang = lTag;
-
-            if (engine == "Google")
-            {
-                Task.Run(() => 
-                {
-                    try
-                    {
-                        string tempFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "tts_temp.txt");
-                        System.IO.File.WriteAllText(tempFile, text);
-                        string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "google_tts.py");
-                        if (!System.IO.File.Exists(scriptPath)) 
-                            scriptPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "google_tts.py");
-
-                        var startInfo = new ProcessStartInfo
-                        {
-                            FileName = "python",
-                            Arguments = $"\"{scriptPath}\" \"{tempFile}\" \"{lang}\"",
-                            UseShellExecute = false,
-                            CreateNoWindow = true
-                        };
-                        using var process = Process.Start(startInfo);
-                        process?.WaitForExit();
-                    }
-                    catch { }
-                });
-            }
-            else
-            {
-                if (_synthesizer == null) 
-                {
-                    _synthesizer = new SpeechSynthesizer();
-                    _synthesizer.SetOutputToDefaultAudioDevice();
-                }
-
-                if (VoiceSelector.SelectedItem is System.Windows.Controls.ComboBoxItem selectedVoice && selectedVoice.Tag is string voiceName)
-                {
-                    try
-                    {
-                        _synthesizer.SelectVoice(voiceName);
-                    }
-                    catch { } // Ignore if voice fails
-                }
-                
-                _synthesizer.SpeakAsyncCancelAll();
-                _synthesizer.SpeakAsync(text);
-            }
-        });
-    }
-
-    private void SpeakAloudSync(string text)
-    {
-        bool isEnabled = false;
-        string? voiceToUse = null;
-        
-        string engine = "Windows";
-        string lang = "en-US";
-        
-        Application.Current.Dispatcher.Invoke(() => 
-        {
-            isEnabled = EnableTTSCheckbox.IsChecked == true;
-            if (VoiceSelector.SelectedItem is System.Windows.Controls.ComboBoxItem selectedVoice && selectedVoice.Tag is string voiceName)
-                voiceToUse = voiceName;
-                
-            if (TTSEngineSelector.SelectedItem is System.Windows.Controls.ComboBoxItem engineItem && engineItem.Tag is string eTag)
-                engine = eTag;
-                
-            if (LanguageSelector.SelectedItem is System.Windows.Controls.ComboBoxItem langItem && langItem.Tag is string lTag)
-                lang = lTag;
-        });
-        
-        if (!isEnabled) return;
-
-        if (engine == "Google")
-        {
-            try
-            {
-                string tempFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "tts_temp_sync.txt");
-                System.IO.File.WriteAllText(tempFile, text);
-                string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "google_tts.py");
-                if (!System.IO.File.Exists(scriptPath)) 
-                    scriptPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "google_tts.py");
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "python",
-                    Arguments = $"\"{scriptPath}\" \"{tempFile}\" \"{lang}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using var process = Process.Start(startInfo);
-                process?.WaitForExit();
-            }
-            catch { }
-            return;
-        }
-
-        // Instantiate a local synthesizer for the background thread to prevent COM cross-thread exceptions
-        using var localSynth = new SpeechSynthesizer();
-        localSynth.SetOutputToDefaultAudioDevice();
-        
-        if (!string.IsNullOrEmpty(voiceToUse))
-        {
-            try { localSynth.SelectVoice(voiceToUse); }
-            catch { }
-        }
-        
-        localSynth.Speak(text);
-    }
 
     private async Task PopulateSettingsAsync()
     {
@@ -2209,73 +1836,8 @@ CRITICAL RULES:
         SecretsDataGrid.ItemsSource = null;
         SecretsDataGrid.ItemsSource = _secrets;
 
-        if (_synthesizer == null)
-        {
-            _synthesizer = new SpeechSynthesizer();
-            _synthesizer.SetOutputToDefaultAudioDevice();
-        }
 
-        if (VoiceSelector.Items.Count == 0)
-        {
-            var voices = _synthesizer.GetInstalledVoices();
-            foreach (var v in voices)
-            {
-                VoiceSelector.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = v.VoiceInfo.Name, Tag = v.VoiceInfo.Name });
-            }
-            if (VoiceSelector.Items.Count > 0)
-                VoiceSelector.SelectedIndex = 0;
-        }
 
-        if (MicSelector.Items.Count == 0)
-        {
-            try
-            {
-                string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "voice_capture.py");
-                if (!File.Exists(scriptPath)) 
-                    scriptPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "voice_capture.py");
-                
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "python",
-                    Arguments = $"\"{scriptPath}\" --list-mics",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    StandardOutputEncoding = System.Text.Encoding.UTF8,
-                    StandardErrorEncoding = System.Text.Encoding.UTF8,
-                    CreateNoWindow = true
-                };
-
-                using var process = Process.Start(startInfo);
-                if (process != null)
-                {
-                    var outTask = process.StandardOutput.ReadToEndAsync();
-                    var errTask = process.StandardError.ReadToEndAsync();
-                    await Task.WhenAll(outTask, errTask, process.WaitForExitAsync());
-                    string output = outTask.Result.Trim();
-
-                    var mics = System.Text.Json.JsonSerializer.Deserialize<List<string>>(output.Trim());
-                    if (mics != null)
-                    {
-                        int defaultIndex = 0;
-                        for (int i = 0; i < mics.Count; i++)
-                        {
-                            MicSelector.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = mics[i], Tag = i });
-                            if (mics[i].IndexOf("Camera", StringComparison.OrdinalIgnoreCase) >= 0)
-                            {
-                                defaultIndex = i;
-                            }
-                        }
-                        if (MicSelector.Items.Count > 0)
-                            MicSelector.SelectedIndex = defaultIndex;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to load mics: {ex.Message}");
-            }
-        }
     }
 
     private void CloseSettings_Click(object sender, RoutedEventArgs e)
@@ -2606,7 +2168,7 @@ CRITICAL RULES:
                     EditorTabControl.SelectedItem = tabItem;
                     _openEditors[path] = webView;
 
-                    await webView.EnsureCoreWebView2Async(null);
+                    // await webView.EnsureCoreWebView2Async(null);
                     
                     string monacoPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "monaco.html");
                     webView.Source = new Uri(monacoPath);
@@ -2936,18 +2498,7 @@ agent.close()
     // ================================================
     // REPO INDEXING
     // ================================================
-    private async void IndexRepo_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrEmpty(_workspacePath))
-        {
-            MessageBox.Show("Please set a workspace first.");
-            return;
-        }
-        LogAgentActivity("Re-indexing repository...");
-        var index = await _artifactManager.BuildRepoIndexAsync(_workspacePath);
-        LogAgentActivity($"Indexed {index.Count} files with {index.Values.Sum(v => v.Count)} symbols.");
-        _artifactManager.CreateArtifact(ArtifactType.Report, "Repo Index", $"Indexed {index.Count} files with {index.Values.Sum(v => v.Count)} symbols at {DateTime.Now:g}");
-    }
+    // IndexRepo_Click extracted
 
     // ================================================
     // ARTIFACT VIEWER

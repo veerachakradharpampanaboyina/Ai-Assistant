@@ -6,12 +6,23 @@
         xmlns:local="clr-namespace:AIAssistant"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:voice="clr-namespace:AIAssistant.Features.VoiceAssistant"
+        xmlns:browser="clr-namespace:AIAssistant.Features.BrowserAgent"
+        xmlns:idetools="clr-namespace:AIAssistant.Features.IdeTools"
+        xmlns:workspaceagent="clr-namespace:AIAssistant.Features.WorkspaceAgent"
         mc:Ignorable="d"
         Title="AI Assistant" Height="700" Width="1400"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica"
         Topmost="True">
     
+    <ui:FluentWindow.Resources>
+        <Storyboard x:Key="ChatPulseAnimation" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="ChatInputBorder" Storyboard.TargetProperty="BorderBrush.(SolidColorBrush.Opacity)" From="0.3" To="1.0" Duration="0:0:0.8" AutoReverse="True"/>
+            <ColorAnimation Storyboard.TargetName="ChatInputBorder" Storyboard.TargetProperty="BorderBrush.(SolidColorBrush.Color)" To="#007ACC" Duration="0:0:0.8" AutoReverse="True"/>
+        </Storyboard>
+    </ui:FluentWindow.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -30,6 +41,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Orientation="Horizontal">
                 <TextBlock Text="Project Workspace" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="SemiBold" Foreground="Gray"/>
+                <ComboBox x:Name="RecentWorkspacesCombo" Width="200" Margin="0,0,10,0" SelectionChanged="RecentWorkspacesCombo_SelectionChanged" DisplayMemberPath="DisplayText" Background="#252526" Foreground="White" BorderThickness="1" BorderBrush="#333" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
                 <ui:Button Content="Zen Mode (F11)" Click="ZenMode_Click" Appearance="Secondary" Margin="0,0,10,0"/>
@@ -39,53 +51,18 @@
 
         <TabControl x:Name="MainTabControl" Grid.Row="2" Margin="10,5,10,5" Background="Transparent" BorderThickness="0">
             <TabItem Header="Workspace Agent" FontSize="14">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <TextBlock x:Name="WorkspaceText" Text="No workspace..." VerticalAlignment="Center" Margin="0,0,10,0" Width="150" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="Canvas:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                    <ComboBox x:Name="CanvasSelector" Width="120" Margin="0,0,10,0" SelectedIndex="0" SelectionChanged="CanvasSelector_SelectionChanged">
-                        <ComboBoxItem Content="Code Project"/>
-                        <ComboBoxItem Content="Document"/>
-                        <ComboBoxItem Content="Presentation"/>
-                        <ComboBoxItem Content="Spreadsheet"/>
-                    </ComboBox>
-                    <TextBlock Text="Format:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                    <ComboBox x:Name="FormatSelector" Width="90" SelectedIndex="0">
-                        <ComboBoxItem Content="Any"/>
-                    </ComboBox>
-                </StackPanel>
+                <workspaceagent:WorkspaceAgentControl x:Name="WorkspaceAgentFeature" />
             </TabItem>
 
             <TabItem Header="Voice Assistant" FontSize="14">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <ToggleButton x:Name="VoiceModeMainToggle" Content="Voice Mode" IsChecked="{Binding ElementName=EnableVoiceModeCheckbox, Path=IsChecked}" Checked="VoiceModeMainToggle_Checked" Unchecked="VoiceModeMainToggle_Unchecked" Margin="0,0,10,0"/>
-                    <ui:Button x:Name="VoiceCommandBtn" Content="🎤 Manual Voice" Click="VoiceCommand_Click" Appearance="Primary" Margin="0,0,10,0"/>
-                    <TextBlock Text="Language:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                    <ComboBox x:Name="LanguageSelector" Width="80" SelectedIndex="0">
-                        <ComboBoxItem Content="en-US" ToolTip="English"/>
-                        <ComboBoxItem Content="hi-IN" ToolTip="Hindi"/>
-                        <ComboBoxItem Content="te-IN" ToolTip="Telugu"/>
-                        <ComboBoxItem Content="ta-IN" ToolTip="Tamil"/>
-                        <ComboBoxItem Content="es-ES" ToolTip="Spanish"/>
-                    </ComboBox>
-                </StackPanel>
+                <voice:VoiceAssistantControl x:Name="VoiceAssistantFeature" />
             </TabItem>
 
             <TabItem Header="IDE Tools" FontSize="14">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <ui:Button Content="Auto-Fix Code" Click="AutoFix_Click" Margin="0,0,10,0"/>
-                    <ui:Button Content="Insert Response" Click="InsertResponse_Click" Margin="0,0,10,0"/>
-                    <ui:Button Content="Screen Capture" Click="ScreenCapture_Click" Margin="0,0,10,0"/>
-                    <ui:Button Content="Index Repo" Click="IndexRepo_Click" Appearance="Secondary"/>
-                </StackPanel>
+                <idetools:IdeToolsControl x:Name="IdeToolsFeature" />
             </TabItem>
             
-            <TabItem Header="Browser Agent" FontSize="14" Name="BrowserAgentTab">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <TextBlock Text="Autonomous Web Navigation Enabled" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="Gray" Margin="0,0,10,0"/>
-                    <ui:Button Content="📸 Screenshot" Click="BrowserScreenshot_Click" Appearance="Secondary" Margin="0,0,5,0"/>
-                    <ui:Button Content="🎥 Record" Click="BrowserRecord_Click" Appearance="Secondary"/>
-                </StackPanel>
-            </TabItem>
+
 
             <TabItem Header="Code Editor (IDE)" FontSize="14" Name="IdeTab">
                 <StackPanel Orientation="Horizontal" Margin="5">
@@ -455,8 +432,7 @@
                 </Grid>
             </Grid>
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="LightGray" x:Name="CodeEditorSplitter"/>
-
-            <wv2:WebView2 x:Name="webView" Source="https://chatgpt.com" Grid.Column="2" />
+            <browser:BrowserAgentControl x:Name="BrowserAgentFeature" Grid.Column="2" />
 
             <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="LightGray"/>
 
@@ -472,13 +448,15 @@
                 <Border Grid.Row="0" Background="#252526" Padding="10" BorderThickness="0,0,0,1" BorderBrush="#333">
                     <Grid>
                         <TextBlock Text="Copilot Chat" FontWeight="SemiBold" Foreground="#CCCCCC" VerticalAlignment="Center" HorizontalAlignment="Left"/>
-                        <ComboBox x:Name="AiSelector" SelectionChanged="AiSelector_SelectionChanged" Width="100" SelectedIndex="0" Background="#333" Foreground="White" BorderThickness="0" HorizontalAlignment="Right">
+                        <ComboBox x:Name="AiSelector"  Width="100" SelectedIndex="0" Background="#333" Foreground="White" BorderThickness="0" HorizontalAlignment="Right" SelectionChanged="AiSelector_SelectionChanged">
                             <ComboBoxItem Content="ChatGPT"/>
                             <ComboBoxItem Content="Gemini"/>
                             <ComboBoxItem Content="Claude"/>
                             <ComboBoxItem Content="Arena AI"/>
                             <ComboBoxItem Content="DeepSeek"/>
                             <ComboBoxItem Content="Z.ai"/>
+                            <ComboBoxItem Content="GPT Chatly"/>
+                            <ComboBoxItem Content="Opus Chatly"/>
                         </ComboBox>
                     </Grid>
                 </Border>
@@ -498,7 +476,7 @@
                 </StackPanel>
 
                 <!-- Chat Input Box -->
-                <Border Grid.Row="3" Background="#252526" Padding="10" BorderThickness="0,1,0,0" BorderBrush="#333">
+                <Border x:Name="ChatInputBorder" Grid.Row="3" Background="#252526" Padding="10" BorderThickness="0,2,0,0" BorderBrush="#333">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -533,9 +511,12 @@
                         <ui:TextBox x:Name="UserPromptText" Grid.Row="1" AcceptsReturn="True" TextWrapping="Wrap" Height="65" VerticalScrollBarVisibility="Auto" PlaceholderText="Ask Copilot a question or describe a task..." Margin="0,0,0,10"/>
                         
                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <ToggleButton x:Name="AutoAcceptToggle" Content="Auto-Accept" Margin="0,0,5,0" Height="28" ToolTip="Automatically accept and save all file changes"/>
                             <ToggleButton x:Name="AutoLoopToggle" Content="Auto-Loop" Checked="AutoLoopToggle_Checked" Unchecked="AutoLoopToggle_Unchecked" Margin="0,0,5,0" Height="28"/>
                             <ui:Button Content="Force Exec" Click="ForceExecution_Click" Margin="0,0,5,0" Height="28" Appearance="Secondary"/>
-                            <ui:Button Content="Submit" Click="InitAgent_Click" Appearance="Primary" Height="28"/>
+                            <ui:ProgressRing x:Name="ChatProcessingRing" IsIndeterminate="True" Visibility="Collapsed" Width="20" Height="20" Margin="0,0,10,0"/>
+                            <TextBlock x:Name="ChatProcessingText" Text="Processing..." Foreground="#007ACC" VerticalAlignment="Center" Visibility="Collapsed" Margin="0,0,10,0" FontWeight="SemiBold"/>
+                            <ui:Button x:Name="SubmitBtn" Content="Submit" Click="InitAgent_Click" Appearance="Primary" Height="28"/>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -564,41 +545,8 @@
                             
                             <Separator Margin="0,10,0,20"/>
                             
-                            <TextBlock Text="Voice &amp; Audio" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                            
-                            <Grid Margin="0,0,0,15">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="150"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Microphone:" VerticalAlignment="Center" Grid.Column="0"/>
-                                <ComboBox x:Name="MicSelector" Grid.Column="1" HorizontalAlignment="Stretch"/>
-                            </Grid>
-                            
-                            <Grid Margin="0,0,0,15">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="150"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Output Voice (TTS):" VerticalAlignment="Center" Grid.Column="0"/>
-                                <ComboBox x:Name="VoiceSelector" Grid.Column="1" HorizontalAlignment="Stretch"/>
-                            </Grid>
-
-                            <CheckBox x:Name="EnableVoiceModeCheckbox" Content="Enable Conversational Voice Mode" IsChecked="True" Margin="0,0,0,5"/>
-                            <TextBlock Text="When enabled, the AI will act as a voice assistant." FontSize="11" Foreground="Gray" Margin="0,0,0,15" TextWrapping="Wrap"/>
-
-                            <CheckBox x:Name="EnableTTSCheckbox" Content="Enable AI Voice Output" IsChecked="True" Margin="0,0,0,5"/>
-
-                            <TextBlock Text="TTS Engine:" Margin="0,10,0,2" FontWeight="SemiBold"/>
-                            <ComboBox x:Name="TTSEngineSelector" Margin="0,0,0,10">
-                                <ComboBoxItem Content="Windows (Offline)" Tag="Windows" />
-                                <ComboBoxItem Content="Google (Online - High Quality)" Tag="Google" IsSelected="True" />
-                            </ComboBox>
-
-                            <TextBlock Text="TTS Voice (Windows Only):" Margin="0,10,0,2" FontWeight="SemiBold"/>
-                            <TextBlock Text="Reads AI responses aloud using the selected voice." FontSize="11" Foreground="Gray" Margin="0,0,0,20" TextWrapping="Wrap"/>
-                            
-                            <Separator Margin="0,10,0,20"/>
+<!-- Voice & Audio settings moved to VoiceAssistantControl -->
+                                                        <Separator Margin="0,10,0,20"/>
 
                             <!-- Security Settings -->
                             <TextBlock Text="Security &amp; Permissions" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
@@ -650,3 +598,5 @@
         </Grid>
     </Grid>
 </ui:FluentWindow>
+
+

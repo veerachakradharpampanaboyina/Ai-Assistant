@@ -1,0 +1,26 @@
+[
+  {
+    "Id": "386e7b7a",
+    "Type": 2,
+    "Title": "screenshot_20260731_114657.png",
+    "FilePath": "386e7b7a_screenshot_20260731_114657.png.png",
+    "Content": "Screenshot saved at: .agent_history\\screenshots\\screenshot_20260731_114657.png",
+    "CreatedAt": "2026-07-31T11:47:07.4902468+05:30",
+    "Status": "active",
+    "TypeIcon": "\uD83D\uDCF8",
+    "DisplayTitle": "\uD83D\uDCF8 screenshot_20260731_114657.png",
+    "TimeAgo": "just now"
+  },
+  {
+    "Id": "ab2d6e4b",
+    "Type": 2,
+    "Title": "screenshot_20260731_114706.png",
+    "FilePath": "ab2d6e4b_screenshot_20260731_114706.png.png",
+    "Content": "Screenshot saved at: .agent_history\\screenshots\\screenshot_20260731_114706.png",
+    "CreatedAt": "2026-07-31T11:47:07.3857041+05:30",
+    "Status": "active",
+    "TypeIcon": "\uD83D\uDCF8",
+    "DisplayTitle": "\uD83D\uDCF8 screenshot_20260731_114706.png",
+    "TimeAgo": "just now"
+  }
+]
